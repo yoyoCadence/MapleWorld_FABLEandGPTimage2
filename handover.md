@@ -512,6 +512,102 @@ If you also produce a matching weapon in-hand sprite, that is a separate file:
 `assets/sprites/weapons/weapon_<itemId>.png` (vertical, blade up). Item icon and
 in-hand sprite are independent.
 
+## Image2 Item Icon Production Pass (Codex, 2026-06-14)
+
+Completed the item icon request above using built-in image generation / image2
+contact sheets. The final icons are generated artwork, not procedural geometry.
+The only local processing was chroma-key removal, equal-cell cutting, fitting,
+and writing PNG files to the already-wired runtime paths.
+
+### Assets produced
+
+- 85 item icons:
+  - Path: `assets/ui/items/<itemId>.png`
+  - Size: `64x64`
+  - Format: transparent `RGBA` PNG
+  - Coverage: every key in `js/data/items.js`
+- Meso coin:
+  - Path: `assets/ui/icon_meso.png`
+  - Size: `32x32`
+  - Format: transparent `RGBA` PNG
+- Manifest:
+  - Path: `assets/ui/item-icon-manifest.json`
+  - Records the sheet groups and output file list.
+
+### Image2 sheet groups
+
+The image2 prompts were split into six contact sheets so each icon had enough
+visual detail:
+
+- `consumables`: red/orange/white/blue potions, mana elixir, elixir,
+  power elixir, return scroll, meso coin.
+- `materials`: snail shell, slime gel, mushroom spores, leather, crystals,
+  ores, bone, dark essence, dragon scale, maple leaf material.
+- `weapons_a`: warrior and magician weapons plus beginner/hunter bows.
+- `weapons_b`: advanced bows, dagger/claw/knuckle/gun weapons.
+- `armor_a`: hats, tops, bottoms, shoes, gloves, travel cape.
+- `armor_b`: capes, shields, earrings, rings, pendants, belts.
+
+Raw image2 outputs used for the current cut:
+
+```text
+consumables = C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_026b3f84c90619d9016a2e904e22f881918477ad9205438d29.png
+materials   = C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_026b3f84c90619d9016a2e90b0c56081918ab7123a89b57ce2.png
+weapons_a   = C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_026b3f84c90619d9016a2e9114a2a481919ffe7a52fb6afaef.png
+weapons_b   = C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_026b3f84c90619d9016a2e9186d52c819196d128076ed8fd0f.png
+armor_a     = C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_026b3f84c90619d9016a2e91f50fe48191bf256b0bf93e055a.png
+armor_b     = C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_026b3f84c90619d9016a2e925c3c148191bd961b7675f7e9ee.png
+```
+
+Keep those originals in place. The game only consumes the processed PNGs under
+`assets/ui/`.
+
+### New script
+
+Added:
+
+```powershell
+py scripts\split_item_icon_contact_sheets.py group=raw.png ...
+```
+
+Supported group names:
+
+- `consumables`
+- `materials`
+- `weapons_a`
+- `weapons_b`
+- `armor_a`
+- `armor_b`
+
+Example rerun command:
+
+```powershell
+py scripts\split_item_icon_contact_sheets.py consumables=<raw.png> materials=<raw.png> weapons_a=<raw.png> weapons_b=<raw.png> armor_a=<raw.png> armor_b=<raw.png>
+```
+
+### Verification
+
+Checked:
+
+- `assets/ui/items/*.png` count is 85.
+- Every item icon is `64x64 RGBA`.
+- `assets/ui/icon_meso.png` is `32x32 RGBA`.
+- Alpha coverage sanity check found no empty or fully opaque icons.
+- A temporary visual preview contact sheet was created for inspection and then
+  deleted.
+
+Latest smoke test:
+
+```powershell
+node tests\smoke.test.js
+```
+
+Result:
+
+```text
+Smoke test result: 72 passed, 0 failed
+```
+
 ## Recommended Next Steps
 
 The new animation sheets are functional and integrated, but most are generated from static PNGs. Good follow-up work:
