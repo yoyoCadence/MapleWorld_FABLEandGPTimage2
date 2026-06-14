@@ -207,13 +207,16 @@ for (const id in MapDB) {
   if (!MapDB[id].bg) MapDB[id].bg = id + '-bg.png';
 }
 
-// 每張地圖放一位商人 NPC（站在靠近入口的小平台旁），可買賣 / 擴充背包
+// 每張地圖放一位商人 NPC，站在「安全的浮空平台」上（怪物不會生在此平台），
+// 旁邊附一條繩索方便上下。可買賣 / 擴充背包。
 for (const id in MapDB) {
   const m = MapDB[id];
   if (m.npc) continue;
   const ground = m.platforms.find((p) => p.ground) || { y: 560 };
-  const nx = Math.min(300, m.w - 120);
-  m.npc = { x: nx, y: ground.y, name: '雜貨商人' };
-  // 商人後方的小裝飾平台
-  m.platforms.push({ x1: nx - 70, x2: nx + 70, y: ground.y - 96 });
+  const nx = Math.min(320, m.w - 140);
+  const py = ground.y - 96;
+  m.npc = { x: nx, y: py, name: '雜貨商人', safe: true };
+  m.platforms.push({ x1: nx - 90, x2: nx + 90, y: py });   // 商人專用安全平台
+  if (!m.ropes) m.ropes = [];
+  m.ropes.push({ x: nx - 66, y1: py, y2: ground.y });       // 上下平台的繩索
 }

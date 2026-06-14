@@ -452,6 +452,66 @@ Result:
 Smoke test result: 69 passed, 0 failed
 ```
 
+## ITEM ICON SPEC REQUEST (user: current icons too plain) - 85 icons
+
+The procedural / current item icons look too plain. Please produce detailed,
+MapleStory-style icons. They are ALREADY wired: drop a PNG at the path below and
+it auto-replaces the icon in inventory / equip / shop / HUD.
+
+- Path / name : `assets/ui/items/<itemId>.png` (exact id, case-sensitive)
+- Size        : 64x64 master (will be drawn down to ~40px in slots; 32x32 also OK)
+- Format      : PNG, transparent background (no opaque tile behind the item)
+- Style       : clear readable silhouette at 32px; top-left light source; soft
+                drop shadow; optional rarity rim (white/green/blue/purple/gold).
+- Meso coin   : `assets/ui/icon_meso.png` (32x32) - gold coin.
+- The Chinese display name + stats for each id are in `js/data/items.js` (ItemDB).
+  Use them to decide what each icon depicts.
+
+TOTAL = 85 icons. Counts by category:
+
+### Consumables - 8 (icon_meso not counted)
+redPotion, orangePotion, whitePotion, bluePotion, manaElixir, elixir,
+powerElixir, returnScroll
+  - Potions: glass bottle, liquid color by name (red/orange/white/blue/purple/gold).
+  - returnScroll: a rolled parchment scroll.
+
+### Materials - 12 (crafting drops; gem/ore/part look)
+snailShell, slimeGel, mushSpore, hardLeather, crystalShard, iceShard, fireOre,
+boneFrag, darkEssence, dragonScale, goldOre, mapleLeafMat
+
+### Weapons - 32 (shape MUST match weapon type in parentheses)
+- sword: woodSword, ironSword, mapleSword, kingSword, darkBlade
+- axe:   battleAxe, dragonSlayer
+- mace:  warMace
+- wand:  beginnerWand, mapleWand
+- staff: crystalStaff, flameStaff, arcaneStaff, voidStaff
+- bow:   beginnerBow, hunterBow, mapleBow, windBow, phoenixBow
+- crossbow: stormCrossbow
+- dagger: beginnerDagger, steelDagger, mapleDagger, venomDagger
+- claw:  shadowClaw, darkClaw
+- knuckle: beginnerKnuckle, ironKnuckle, mapleKnuckle, krakenKnuckle
+- gun:   pirateGun, cannonGun
+  - Tier hint by name: beginner/wood < iron/steel/hunter < maple < element/storm
+    < king/dragon/dark/void/phoenix/kraken (legendary - add glow/fx).
+
+### Armor + Accessories - 33 (shape MUST match the slot in brackets)
+- hat:     leafHat, ironHelm, wizardHat, kingCrown, dragonHelm
+- top:     travelTop, ironArmor, mageRobe, dragonMail
+- bottom:  clothPants, ironGreaves, dragonGreaves
+- shoes:   strawShoes, leatherBoots, windBoots, dragonBoots
+- gloves:  clothGloves, battleGloves, dragonGloves
+- cape:    travelCape, mapleCape, dragonCape
+- shield:  woodShield, ironShield, dragonShield
+- earring: jadeEarring, rubyEarring
+- ring:    powerRing, dragonRing
+- pendant: moonPendant, dragonPendant
+- belt:    leatherBelt, dragonBelt
+  - "dragon*" set is the top tier (red dragon-scale theme); "king*" is gold.
+
+If you also produce a matching weapon in-hand sprite, that is a separate file:
+`assets/sprites/weapons/weapon_<itemId>.png` (vertical, blade up). Item icon and
+in-hand sprite are independent.
+
 ## Recommended Next Steps
 
 The new animation sheets are functional and integrated, but most are generated from static PNGs. Good follow-up work:

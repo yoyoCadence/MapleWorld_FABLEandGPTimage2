@@ -165,7 +165,7 @@ class Player {
         game.transfer(portal.target, portal.targetPortal);
         return;
       }
-      if (map.npc && Math.abs(map.npc.x - this.x) < 46 && this.onGround) {
+      if (map.npc && Math.abs(map.npc.x - this.x) < 48 && Math.abs(map.npc.y - this.y) < 52 && this.onGround) {
         UI.openShop();
         return;
       }

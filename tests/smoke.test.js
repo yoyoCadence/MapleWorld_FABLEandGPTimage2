@@ -331,7 +331,20 @@ check('商店可開啟', UI.show.shop === true);
 let shopOk = true;
 try { Game.draw(ctxStub_); } catch (e) { shopOk = false; console.error(e); }
 check('商店繪製不報錯', shopOk);
-UI.show.shop = false;
+
+// 賣出可選擇數量
+pp.inventory[0] = { id: 'redPotion', qty: 20 };
+UI.show.shop = true; UI.shopTab = 'sell'; UI.sellSel = { slot: 0, qty: 5 };
+UI.layout();
+let sellDrawOk = true;
+try { Game.draw(ctxStub_); } catch (e) { sellDrawOk = false; console.error(e); }
+check('賣出數量彈窗繪製不報錯', sellDrawOk);
+const meso0 = pp.meso;
+Input.mouseX = UI.R.sellConfirm.x + 2; Input.mouseY = UI.R.sellConfirm.y + 2; Input.clicked = true;
+UI.update(Game, 1 / 60);
+check('賣出指定數量(5)後剩 15', pp.inventory[0] && pp.inventory[0].qty === 15);
+check('賣出獲得對應楓幣', pp.meso === meso0 + UI._sellOf('redPotion') * 5);
+UI.show.shop = false; UI.sellSel = null;
 
 console.log(\`\\n煙霧測試結果：\${__pass} 通過，\${__fail} 失敗\`);
 if (__fail > 0) process.exit(1);
