@@ -159,13 +159,14 @@ class Monster {
 
       case 'summon':
         if (this.bTimer <= 0) {
+          const minion = this.def.minion || 'mushroom';
           for (const off of [-90, 90]) {
-            const mm = game.spawnMonster('mushroom',
+            const mm = game.spawnMonster(minion,
               Utils.clamp(this.x + off, this.plat.x1 + 30, this.plat.x2 - 30), this.plat, null);
             mm.isMinion = true;
             mm.aggroT = 8;
           }
-          Effects.announce('蘑菇王召喚了手下！', '#ff8a65');
+          Effects.announce(`${this.def.name}召喚了手下！`, '#ff8a65');
           this.endAttack();
         }
         break;

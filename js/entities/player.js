@@ -1,6 +1,6 @@
 // 玩家：移動 / 跳躍 / 爬繩 / 戰鬥 / 背包裝備 / 升級
 class Player {
-  constructor(save) {
+  constructor(save, job) {
     this.x = 120;
     this.y = 560;
     this.vx = 0;
@@ -12,14 +12,20 @@ class Player {
     this.climbing = null;   // 抓住的繩索
     this.dropT = 0;         // 下跳穿越平台計時
 
+    this.job = (save && save.job) || job || 'warrior';
+    const jd = JobDB[this.job] || JobDB.warrior;
     this.level = 1;
     this.exp = 0;
     this.meso = 0;
     this.sp = 0;
-    this.skills = { powerStrike: 1 };
+    this.skills = {};
+    this.skills[jd.skills[0]] = 1;   // 起始技能
     this.skillCds = {};
+    this.buffs = {};                 // id -> { atk, def, speed, until }
     this.inventory = new Array(CONFIG.INV_SIZE).fill(null);
-    this.equips = { weapon: 'woodSword', hat: null, top: null, shoes: null };
+    this.equips = {};
+    for (const slot of EQUIP_SLOTS) this.equips[slot] = null;
+    this.equips.weapon = jd.startWeapon;
 
     this.invinc = 0;
     this.gcd = 0;
@@ -41,19 +47,34 @@ class Player {
     }
   }
 
-  // ── 屬性（基礎值 + 裝備加成）──
+  // ── 屬性（基礎值 × 職業修正 + 裝備加成 × buff）──
+  get jobDef() { return JobDB[this.job] || JobDB.warrior; }
+  skillList() { return this.jobDef.skills; }
+
   equipBonus(field) {
     let s = 0;
     for (const slot of EQUIP_SLOTS) {
       const id = this.equips[slot];
-      if (id && ItemDB[id][field]) s += ItemDB[id][field];
+      if (id && ItemDB[id] && ItemDB[id][field]) s += ItemDB[id][field];
     }
     return s;
   }
-  get atk() { return Math.round(10 + this.level * 2.4 + this.equipBonus('atk')); }
-  get def() { return Math.round(2 + this.level * 1.2 + this.equipBonus('def')); }
-  get maxHp() { return Math.round(50 + this.level * 22 + this.equipBonus('hp')); }
-  get maxMp() { return Math.round(28 + this.level * 11 + this.equipBonus('mp')); }
+  buffBonus(field) {
+    let s = 0;
+    for (const k in this.buffs) if (this.buffs[k][field]) s += this.buffs[k][field];
+    return s;
+  }
+  get atk() {
+    const v = (10 + this.level * 2.4) * this.jobDef.statMods.atk + this.equipBonus('atk');
+    return Math.round(v * (1 + this.buffBonus('atk')));
+  }
+  get def() {
+    const v = (2 + this.level * 1.2) * this.jobDef.statMods.def + this.equipBonus('def');
+    return Math.round(v * (1 + this.buffBonus('def')));
+  }
+  get maxHp() { return Math.round((50 + this.level * 22) * this.jobDef.statMods.hp + this.equipBonus('hp')); }
+  get maxMp() { return Math.round((28 + this.level * 11) * this.jobDef.statMods.mp + this.equipBonus('mp')); }
+  get speedMul() { return 1 + this.buffBonus('speed') + this.equipBonus('spd') / 100; }
 
   rect() {
     return { x: this.x - CONFIG.PLAYER_W / 2, y: this.y - CONFIG.PLAYER_H, w: CONFIG.PLAYER_W, h: CONFIG.PLAYER_H };
@@ -66,6 +87,7 @@ class Player {
     this.dropT = Math.max(0, this.dropT - dt);
     this.outCombat += dt;
     for (const k in this.skillCds) this.skillCds[k] = Math.max(0, this.skillCds[k] - dt);
+    for (const k in this.buffs) if (game.time >= this.buffs[k].until) delete this.buffs[k];
 
     // 緩慢回復
     if (this.outCombat > 4) this.hp = Math.min(this.maxHp, this.hp + (1 + this.level * 0.3) * dt);
@@ -116,8 +138,9 @@ class Player {
 
     // ── 一般移動 ──
     const canMove = !(this.attackAnim > 0 && this.onGround);
-    if (canMove && left && !right) { this.vx = -CONFIG.MOVE_SPEED; this.facing = -1; }
-    else if (canMove && right && !left) { this.vx = CONFIG.MOVE_SPEED; this.facing = 1; }
+    const ms = CONFIG.MOVE_SPEED * this.speedMul;
+    if (canMove && left && !right) { this.vx = -ms; this.facing = -1; }
+    else if (canMove && right && !left) { this.vx = ms; this.facing = 1; }
     else this.vx = 0;
 
     // 跳躍 / ↓+跳 下跳穿越平台
@@ -159,8 +182,8 @@ class Player {
     }
 
     // 攻擊 / 技能 / 藥水 / 撿取
-    if (Input.pressed['KeyX']) this.tryBasic();
-    for (const id of SKILL_ORDER) {
+    if (Input.pressed['KeyX']) this.tryBasic(game);
+    for (const id of this.skillList()) {
       if (Input.pressed[SkillDB[id].code]) this.castSkill(id, game);
     }
     if (Input.pressed['Digit1']) this.quickPotion(['redPotion', 'orangePotion', 'elixir']);
@@ -215,14 +238,38 @@ class Player {
   }
 
   // ── 戰鬥 ──
-  tryBasic() {
+  tryBasic(game) {
     if (this.gcd > 0 || this.attackAnim > 0 || this.climbing) return;
-    this.attackDur = 0.32;
-    this.attackAnim = 0.32;
-    this.attackType = { kind: 'melee', mult: 1.0, targets: 1 };
-    this.attackHitDone = false;
-    this.gcd = 0.42;
-    Sound.play('attack');
+    const jd = this.jobDef;
+    if (jd.basicType === 'projectile' && game) {
+      const bp = jd.basicProjectile || {};
+      this.attackDur = 0.3;
+      this.attackAnim = 0.3;
+      this.attackType = null;
+      this.attackHitDone = true;
+      this.gcd = 0.4;
+      game.projectiles.push(new Projectile({
+        from: 'player', x: this.x + this.facing * 22, y: this.y - 26, dir: this.facing,
+        speed: bp.speed || 560, mult: 1.0, pierce: bp.pierce || 1, life: 1.0,
+        style: bp.style, color: bp.color,
+      }));
+      Sound.play('attack');
+    } else {
+      this.attackDur = 0.32;
+      this.attackAnim = 0.32;
+      this.attackType = { kind: 'melee', mult: 1.0, targets: 1 };
+      this.attackHitDone = false;
+      this.gcd = 0.42;
+      Sound.play('attack');
+    }
+  }
+
+  applyBuff(id, d, lv, game) {
+    const b = d.buff(lv);
+    this.buffs[id] = {
+      atk: b.atk || 0, def: b.def || 0, speed: b.speed || 0,
+      until: (game ? game.time : 0) + b.dur,
+    };
   }
 
   castSkill(id, game) {
@@ -242,6 +289,8 @@ class Player {
     this.mp -= cost;
     this.skillCds[id] = d.cd;
     this.gcd = 0.4;
+    const mult = d.mult ? d.mult(lv) : 1;
+    const pierce = typeof d.pierce === 'function' ? d.pierce(lv) : (d.pierce || 1);
 
     if (d.type === 'heal') {
       const amount = Math.round(this.maxHp * d.healPct(lv));
@@ -249,11 +298,21 @@ class Player {
       Effects.healFx(this.x, this.y);
       Effects.spawnDamage(this.x, this.y - 60, '+' + amount, '#69f0ae');
       Sound.play('heal');
+    } else if (d.type === 'buff') {
+      this.applyBuff(id, d, lv, game);
+      Effects.ring(this.x, this.y - 20, '#ffd54f');
+      Effects.announce(`✦ ${d.name} 發動！`, '#ffe082');
+      Sound.play('skill');
     } else if (d.type === 'projectile') {
-      game.projectiles.push(new Projectile({
-        from: 'player', x: this.x + this.facing * 22, y: this.y - 26, dir: this.facing,
-        speed: 540, mult: d.mult(lv), pierce: d.pierce(lv), life: 1.0,
-      }));
+      const count = d.count || 1;
+      for (let i = 0; i < count; i++) {
+        const vy = count > 1 ? (i - (count - 1) / 2) * (d.spread || 0) : 0;
+        game.projectiles.push(new Projectile({
+          from: 'player', x: this.x + this.facing * 22, y: this.y - 26, dir: this.facing,
+          speed: d.speed || 540, mult, pierce, life: d.life || 1.0,
+          style: d.style, color: d.color, vy,
+        }));
+      }
       this.attackDur = 0.28;
       this.attackAnim = 0.28;
       this.attackType = null;
@@ -262,15 +321,15 @@ class Player {
     } else if (d.type === 'aoe') {
       this.attackDur = 0.36;
       this.attackAnim = 0.36;
-      this.attackType = { kind: 'aoe', mult: d.mult(lv), radius: d.radius };
+      this.attackType = { kind: 'aoe', mult, radius: d.radius };
       this.attackHitDone = false;
       Effects.spin(this.x, this.y - 26, d.radius);
       Sound.play('skill');
     } else {
-      // melee（強力斬）
+      // melee
       this.attackDur = 0.32;
       this.attackAnim = 0.32;
-      this.attackType = { kind: 'melee', mult: d.mult(lv), targets: 1, big: true };
+      this.attackType = { kind: 'melee', mult, targets: d.targets || 1, big: d.big };
       this.attackHitDone = false;
       Sound.play('skill');
     }
@@ -359,23 +418,33 @@ class Player {
     return true;
   }
 
-  useSlot(i) {
+  useSlot(i, game) {
     const s = this.inventory[i];
     if (!s) return;
     const d = ItemDB[s.id];
+    if (d.type === 'material') {
+      Effects.spawnText(this.x, this.y - 70, '材料：製作用', '#90a4ae');
+      return;
+    }
     if (d.type === 'use') {
       if (d.heal) {
-        this.hp = Math.min(this.maxHp, this.hp + d.heal);
-        Effects.spawnDamage(this.x, this.y - 60, '+' + d.heal, '#69f0ae');
+        this.hp = Math.min(this.maxHp, this.hp + Math.min(d.heal, this.maxHp));
+        Effects.spawnDamage(this.x, this.y - 60, '+' + Math.min(d.heal, this.maxHp), '#69f0ae');
       }
       if (d.mpHeal) {
-        this.mp = Math.min(this.maxMp, this.mp + d.mpHeal);
-        Effects.spawnDamage(this.x, this.y - (d.heal ? 80 : 60), '+' + d.mpHeal, '#64b5f6');
+        this.mp = Math.min(this.maxMp, this.mp + Math.min(d.mpHeal, this.maxMp));
+        Effects.spawnDamage(this.x, this.y - (d.heal ? 80 : 60), '+' + Math.min(d.mpHeal, this.maxMp), '#64b5f6');
       }
+      if (d.warp && game && MapDB[d.warp]) { game.transfer(d.warp, 'back'); }
       Sound.play('potion');
       s.qty--;
       if (s.qty <= 0) this.inventory[i] = null;
     } else {
+      if (d.slot === 'weapon' && d.class && d.class !== 'any' && d.class !== this.job) {
+        Effects.announce(`${this.jobDef.name}無法裝備 ${d.name}`, '#ef9a9a');
+        Sound.play('error');
+        return;
+      }
       if (this.level < (d.reqLv || 1)) {
         Effects.announce(`需要等級 ${d.reqLv} 才能裝備 ${d.name}`, '#ef9a9a');
         Sound.play('error');
@@ -457,7 +526,8 @@ class Player {
   // ── 存檔 ──
   serialize() {
     return {
-      v: 1,
+      v: 2,
+      job: this.job,
       level: this.level, exp: this.exp,
       hp: Math.round(this.hp), mp: Math.round(this.mp),
       meso: this.meso, sp: this.sp,
@@ -466,15 +536,19 @@ class Player {
   }
 
   applySave(s) {
+    this.job = s.job || this.job || 'warrior';
     this.level = s.level || 1;
     this.exp = s.exp || 0;
     this.meso = s.meso || 0;
     this.sp = s.sp || 0;
-    this.skills = s.skills || { powerStrike: 1 };
+    this.skills = s.skills || {};
+    if (!Object.keys(this.skills).length) this.skills[this.jobDef.skills[0]] = 1;
     const inv = new Array(CONFIG.INV_SIZE).fill(null);
     (s.inventory || []).slice(0, CONFIG.INV_SIZE).forEach((v, i) => { inv[i] = v; });
     this.inventory = inv;
-    this.equips = Object.assign({ weapon: null, hat: null, top: null, shoes: null }, s.equips);
+    const eq = {};
+    for (const slot of EQUIP_SLOTS) eq[slot] = null;
+    this.equips = Object.assign(eq, s.equips || {});
     this.hp = Math.min(s.hp || this.maxHp, this.maxHp);
     this.mp = Math.min(s.mp || this.maxMp, this.maxMp);
   }

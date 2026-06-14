@@ -25,6 +25,24 @@ const THEMES = {
     grass: { light: '#e8c87a', base: '#c9a24b', deep: '#8a6a2a', fringe: '#6e5420' },
     soil: { top: '#4a3640', bottom: '#241a20', stone: '#6a5260' },
   },
+  snow: {
+    sky: ['#9ecbe8', '#cfe6f5', '#eef6fc'],
+    tint: 'rgba(200,225,255,0.06)',
+    grass: { light: '#ffffff', base: '#e2eef7', deep: '#bcd2e2', fringe: '#a8c1d6' },
+    soil: { top: '#cdd8e4', bottom: '#76869a', stone: '#aebccb' },
+  },
+  lava: {
+    sky: ['#2a0e08', '#5a1b0e', '#9a431c'],
+    tint: 'rgba(255,90,30,0.08)',
+    grass: { light: '#ff9a4a', base: '#d8551e', deep: '#8a2e10', fringe: '#6e2410' },
+    soil: { top: '#5a2418', bottom: '#26100a', stone: '#7a3a22' },
+  },
+  castle: {
+    sky: ['#161226', '#2b2440', '#46406a'],
+    tint: 'rgba(120,110,170,0.06)',
+    grass: { light: '#9a9ac0', base: '#5d5d7e', deep: '#3d3d56', fringe: '#33334a' },
+    soil: { top: '#4a4660', bottom: '#22202e', stone: '#6a6488' },
+  },
 };
 
 const Renderer = {
@@ -38,6 +56,9 @@ const Renderer = {
     forest: 'forest-bg.png',
     cave: 'cave-bg.png',
     altar: 'shrine-bg.png',
+    snow: 'snow-bg.png',
+    lava: 'lava-bg.png',
+    castle: 'castle-bg.png',
   },
   TILE_W: 1280,
 
@@ -96,10 +117,7 @@ const Renderer = {
     ctx.drawImage(tile, off + TW, 0);
   },
 
-  _assetBg(theme) {
-    if (typeof Image === 'undefined') return null;
-    const file = this.BG_ASSETS[theme];
-    if (!file) return null;
+  _bgImg(file) {
     const path = this.ASSET_BASE + 'backgrounds/' + file;
     if (!this._assetBgCache[path]) {
       const img = new Image();
@@ -110,12 +128,27 @@ const Renderer = {
     return this._assetBgCache[path];
   },
 
+  // 優先用每張地圖專屬背景（map.bg，例如 snowField-bg.png）；缺檔則回退到主題共用背景
+  _assetBg(map) {
+    if (typeof Image === 'undefined') return null;
+    const files = [];
+    if (map && map.bg) files.push(map.bg);
+    if (map && this.BG_ASSETS[map.theme]) files.push(this.BG_ASSETS[map.theme]);
+    let any = null;
+    for (const f of files) {
+      const img = this._bgImg(f);
+      any = img;
+      if (this._imageReady(img)) return img;
+    }
+    return any;
+  },
+
   _imageReady(img) {
     return img && img.complete && img.naturalWidth > 0;
   },
 
   _drawAssetBackground(ctx, map, cam) {
-    const img = this._assetBg(map.theme);
+    const img = this._assetBg(map);
     if (!this._imageReady(img)) return false;
 
     const W = CONFIG.CANVAS_W, H = CONFIG.CANVAS_H;
@@ -243,8 +276,11 @@ const Renderer = {
     const far = mk(), mid = mk();
     const f = far.getContext('2d'), m = mid.getContext('2d');
     const rnd = Utils.seeded(Utils.hash(theme));
-    this['_far_' + theme](f, TW, TH, rnd);
-    this['_mid_' + theme](m, TW, TH, rnd);
+    // 新主題（snow/lava/castle）以 PNG 背景為主；若程序化函式不存在則沿用最接近的風格
+    const farFn = this['_far_' + theme] || (theme === 'lava' || theme === 'castle' ? this._far_cave : this._far_meadow);
+    const midFn = this['_mid_' + theme] || (theme === 'lava' || theme === 'castle' ? this._mid_cave : this._mid_meadow);
+    farFn.call(this, f, TW, TH, rnd);
+    midFn.call(this, m, TW, TH, rnd);
     const out = { far, mid };
     this._bgCache[theme] = out;
     return out;
@@ -834,9 +870,9 @@ const Renderer = {
       }
     }
 
-    // ── 各主題的頂面 ──
-    if (map.theme === 'altar') this._topAltar(c, x1, x2, y, w, rnd);
-    else if (map.theme === 'cave') this._topCave(c, x1, x2, y, w, th, rnd);
+    // ── 各主題的頂面（新主題沿用最接近的既有風格）──
+    if (map.theme === 'altar' || map.theme === 'castle') this._topAltar(c, x1, x2, y, w, rnd);
+    else if (map.theme === 'cave' || map.theme === 'lava') this._topCave(c, x1, x2, y, w, th, rnd);
     else this._topGrass(c, x1, x2, y, map.theme, th, rnd);
   },
 

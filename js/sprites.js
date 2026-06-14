@@ -3,6 +3,14 @@ const Sprites = {
   OUT: 'rgba(56,36,44,0.9)',   // 動漫描邊色
   ASSET_BASE: 'assets/',
   PLAYER_ASSET: 'sprites/player/hero-adventurer.png',
+  // 每職業專屬立繪（缺檔時自動沿用 hero-adventurer.png）
+  PLAYER_ASSETS: {
+    warrior: 'sprites/player/hero-adventurer.png',
+    magician: 'sprites/player/hero-magician.png',
+    archer: 'sprites/player/hero-archer.png',
+    thief: 'sprites/player/hero-thief.png',
+    pirate: 'sprites/player/hero-pirate.png',
+  },
   MONSTER_ASSETS: {
     snail: 'mob_blue_snail.png',
     slime: 'mob_bubbling.png',
@@ -10,6 +18,17 @@ const Sprites = {
     purpleMush: 'mob_zombie_mushroom.png',
     golem: 'mob_stump.png',
     boss: 'mob_darklord.png',
+    // 重用既有 PNG 的新怪物（缺專屬素材時的暫代）
+    boar: 'mob_pig.png',
+    bat: 'mob_bat.png',
+    eye: 'mob_eye.png',
+    yeti: 'mob_yeti.png',
+    fireGoblin: 'mob_goblin.png',
+    drake: 'mob_drake.png',
+    mummy: 'mob_mummy.png',
+    yetiKing: 'mob_yeti.png',
+    flameDrake: 'mob_drake.png',
+    darkLord: 'mob_darklord.png',
   },
   WEAPON_ASSETS: {
     woodSword: 'weapon_wood_sword.png',
@@ -161,7 +180,9 @@ const Sprites = {
   },
 
   _drawPlayerAsset(ctx, p, t) {
-    const img = this._loadImage(this.ASSET_BASE + this.PLAYER_ASSET);
+    const jobFile = this.PLAYER_ASSETS[p.job] || ('sprites/player/hero-' + p.job + '.png');
+    let img = this._loadImage(this.ASSET_BASE + jobFile);
+    if (!this._readyImage(img)) img = this._loadImage(this.ASSET_BASE + this.PLAYER_ASSET);
     if (!this._readyImage(img)) return false;
 
     const attacking = p.attackAnim > 0;
@@ -622,12 +643,14 @@ const Sprites = {
     ctx.translate(0, -hop);
     ctx.scale((m.dir < 0 ? -1 : 1) * (2 - sq), sq);
     const filters = [];
-    if (m.type === 'purpleMush') filters.push('hue-rotate(44deg) saturate(1.2)');
+    if (d.tint) filters.push(d.tint);
     if (m.flash > 0) filters.push('brightness(2.1)');
     if (filters.length) ctx.filter = filters.join(' ');
 
     if (!this._drawMonsterAsset(ctx, m, t)) {
-      this['_m_' + (d.boss ? 'boss' : m.type)](ctx, d.w, d.h, t, m);
+      const key = d.draw || (d.boss ? 'boss' : m.type);
+      const fn = this['_m_' + key] || this._m_generic;
+      fn.call(this, ctx, d.w, d.h, t, m);
     }
 
     ctx.filter = 'none';
@@ -680,13 +703,13 @@ const Sprites = {
     return img && img.complete && img.naturalWidth > 0;
   },
 
-  _monsterAsset(type) {
-    const file = this.MONSTER_ASSETS[type];
+  _monsterAsset(m) {
+    const file = (m.def && m.def.asset) || this.MONSTER_ASSETS[m.type];
     return file ? this._loadImage(this.ASSET_BASE + 'sprites/' + file) : null;
   },
 
   _drawMonsterAsset(ctx, m, t) {
-    const img = this._monsterAsset(m.type);
+    const img = this._monsterAsset(m);
     if (!this._readyImage(img)) return false;
 
     const d = m.def;
@@ -747,6 +770,57 @@ const Sprites = {
     ctx.beginPath();
     ctx.ellipse(x, y, r, r * 0.62, 0, 0, Math.PI * 2);
     ctx.fill();
+  },
+
+  // 通用 Q 版怪物（缺專屬 PNG / 外形時的安全 fallback：圓身大眼 + 小腳）
+  _m_generic(ctx, w, h, t, m) {
+    const base = (m && m.def && m.def.color) || '#8a8fb0';
+    // 小腳
+    ctx.fillStyle = 'rgba(40,34,52,0.85)';
+    for (const fx of [-w * 0.2, w * 0.2]) {
+      ctx.beginPath();
+      ctx.ellipse(fx, -2, w * 0.12, h * 0.06, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 身體
+    const g = ctx.createLinearGradient(0, -h, 0, 0);
+    g.addColorStop(0, this._lighten(base, 40));
+    g.addColorStop(1, base);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.46, -h * 0.1);
+    ctx.bezierCurveTo(-w * 0.52, -h * 0.7, -w * 0.28, -h * 1.0, 0, -h * 1.0);
+    ctx.bezierCurveTo(w * 0.28, -h * 1.0, w * 0.52, -h * 0.7, w * 0.46, -h * 0.1);
+    ctx.quadraticCurveTo(0, -h * 0.02, -w * 0.46, -h * 0.1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(40,30,40,0.55)';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    // 頂部高光
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(-w * 0.16, -h * 0.78, w * 0.16, h * 0.07, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    // 大眼 + 微笑 + 腮紅
+    this._mobEye(ctx, -w * 0.14, -h * 0.55, 3.6, '#2c2436', 0);
+    this._mobEye(ctx, w * 0.16, -h * 0.55, 3.6, '#2c2436', 0);
+    ctx.strokeStyle = 'rgba(40,30,40,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(w * 0.01, -h * 0.4, 3.2, 0.2, Math.PI - 0.2);
+    ctx.stroke();
+    this._cheek(ctx, -w * 0.26, -h * 0.44, 2.6);
+    this._cheek(ctx, w * 0.28, -h * 0.44, 2.6);
+  },
+
+  _lighten(hex, amt) {
+    if (typeof hex !== 'string' || hex[0] !== '#') return '#cfcfe0';
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.min(255, (n >> 16) + amt);
+    const g = Math.min(255, ((n >> 8) & 255) + amt);
+    const b = Math.min(255, (n & 255) + amt);
+    return `rgb(${r},${g},${b})`;
   },
 
   _m_snail(ctx, w, h, t) {
@@ -1552,8 +1626,95 @@ const Sprites = {
       ctx.fillStyle = 'rgba(40,26,16,0.8)';
       Utils.rr(ctx, -s * 0.24, s * 0.24, s * 0.52, s * 0.07, 2);
       ctx.fill();
+    } else {
+      // 其餘類型（新武器類 / 飾品 / 材料 / 卷軸）的程序化暫代圖示
+      this._genericItemIcon(ctx, d, s);
     }
     ctx.restore();
+  },
+
+  // 通用道具圖示（缺專屬素材時）：武器→斜置刃身；材料→寶石；防具/飾品→徽章
+  _genericItemIcon(ctx, d, s) {
+    const col = d.color || '#cfcfe0';
+    if (d.slot === 'weapon') {
+      ctx.rotate(-Math.PI / 4);
+      const bg = ctx.createLinearGradient(0, s * 0.12, 0, -s * 0.4);
+      bg.addColorStop(0, col);
+      bg.addColorStop(1, '#ffffff');
+      ctx.fillStyle = bg;
+      // 依武器類型微調外形
+      const wt = d.wtype;
+      if (wt === 'wand' || wt === 'staff') {
+        ctx.fillStyle = '#7a5230';
+        Utils.rr(ctx, -s * 0.04, -s * 0.34, s * 0.08, s * 0.74, 2); ctx.fill();
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(0, -s * 0.36, s * 0.13, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath(); ctx.arc(-s * 0.04, -s * 0.4, s * 0.04, 0, Math.PI * 2); ctx.fill();
+      } else if (wt === 'bow' || wt === 'crossbow') {
+        ctx.strokeStyle = col; ctx.lineWidth = s * 0.07;
+        ctx.beginPath(); ctx.arc(0, 0, s * 0.34, -Math.PI * 0.6, Math.PI * 0.6); ctx.stroke();
+        ctx.strokeStyle = 'rgba(240,240,240,0.8)'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(s * 0.2, -s * 0.28); ctx.lineTo(s * 0.2, s * 0.28); ctx.stroke();
+      } else if (wt === 'gun') {
+        ctx.fillStyle = col;
+        Utils.rr(ctx, -s * 0.34, -s * 0.06, s * 0.6, s * 0.14, 2); ctx.fill();
+        Utils.rr(ctx, -s * 0.3, s * 0.06, s * 0.1, s * 0.2, 2); ctx.fill();
+      } else if (wt === 'knuckle') {
+        ctx.fillStyle = col;
+        Utils.rr(ctx, -s * 0.28, -s * 0.12, s * 0.56, s * 0.24, 5); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        for (const kx of [-0.16, 0, 0.16]) { ctx.beginPath(); ctx.arc(s * kx, -s * 0.04, s * 0.05, 0, Math.PI * 2); ctx.fill(); }
+      } else {
+        // 劍 / 斧 / 鈍器 / 短劍 / 拳爪：錐形刃 + 護手 + 握把
+        const len = wt === 'dagger' || wt === 'claw' ? 0.34 : 0.46;
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.07, s * 0.1);
+        ctx.lineTo(-s * 0.05, -s * (len - 0.08));
+        ctx.quadraticCurveTo(0, -s * len, s * 0.05, -s * (len - 0.08));
+        ctx.lineTo(s * 0.07, s * 0.1);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#c89028'; ctx.lineWidth = s * 0.06;
+        ctx.beginPath(); ctx.arc(0, s * 0.12, s * 0.13, Math.PI * 0.1, Math.PI * 0.9); ctx.stroke();
+        ctx.fillStyle = '#54331a';
+        Utils.rr(ctx, -s * 0.035, s * 0.16, s * 0.07, s * 0.2, 2); ctx.fill();
+      }
+      return;
+    }
+    if (d.icon === 'material') {
+      // 寶石／礦石
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(0, -s * 0.34); ctx.lineTo(s * 0.3, -s * 0.06); ctx.lineTo(s * 0.18, s * 0.32);
+      ctx.lineTo(-s * 0.18, s * 0.32); ctx.lineTo(-s * 0.3, -s * 0.06); ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(20,20,30,0.5)'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.beginPath(); ctx.moveTo(0, -s * 0.34); ctx.lineTo(-s * 0.18, s * 0.32); ctx.lineTo(-s * 0.04, s * 0.1); ctx.closePath(); ctx.fill();
+      return;
+    }
+    if (d.icon === 'scroll') {
+      ctx.fillStyle = '#f2e6c8';
+      Utils.rr(ctx, -s * 0.26, -s * 0.3, s * 0.52, s * 0.6, 3); ctx.fill();
+      ctx.fillStyle = col;
+      Utils.rr(ctx, -s * 0.3, -s * 0.34, s * 0.6, s * 0.1, 3); ctx.fill();
+      Utils.rr(ctx, -s * 0.3, s * 0.24, s * 0.6, s * 0.1, 3); ctx.fill();
+      ctx.strokeStyle = 'rgba(120,90,40,0.6)'; ctx.lineWidth = 1;
+      for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(-s * 0.16, s * 0.1 * i); ctx.lineTo(s * 0.16, s * 0.1 * i); ctx.stroke(); }
+      return;
+    }
+    // 防具 / 飾品：圓角徽章 + 寶石
+    const g = ctx.createLinearGradient(0, -s * 0.3, 0, s * 0.3);
+    g.addColorStop(0, this._lighten(col, 40));
+    g.addColorStop(1, col);
+    ctx.fillStyle = g;
+    Utils.rr(ctx, -s * 0.3, -s * 0.3, s * 0.6, s * 0.6, s * 0.16);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(20,20,30,0.45)'; ctx.lineWidth = 1.2;
+    Utils.rr(ctx, -s * 0.3, -s * 0.3, s * 0.6, s * 0.6, s * 0.16);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.beginPath(); ctx.arc(-s * 0.1, -s * 0.1, s * 0.07, 0, Math.PI * 2); ctx.fill();
   },
 
   _drawItemWeaponAsset(ctx, id, s) {
@@ -1676,3 +1837,21 @@ const Sprites = {
     ctx.restore();
   },
 };
+
+// 為所有武器自動指派預期檔名（weapon_<id>.png）；提供對應 PNG 即自動套用，否則用程序化暫代
+if (typeof ItemDB !== 'undefined') {
+  for (const id in ItemDB) {
+    const d = ItemDB[id];
+    if (d.slot === 'weapon' && !Sprites.WEAPON_ASSETS[id]) {
+      Sprites.WEAPON_ASSETS[id] = 'weapon_' + id + '.png';
+    }
+  }
+}
+// 為所有怪物自動指派預期檔名（mob_<type>.png）；提供對應 PNG 即自動套用，否則用程序化/變色暫代
+if (typeof MonsterDB !== 'undefined') {
+  for (const type in MonsterDB) {
+    if (!Sprites.MONSTER_ASSETS[type] && !MonsterDB[type].asset) {
+      Sprites.MONSTER_ASSETS[type] = 'mob_' + type + '.png';
+    }
+  }
+}

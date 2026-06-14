@@ -9,6 +9,10 @@ const UI = {
            Input.mouseY >= r.y && Input.mouseY <= r.y + r.h;
   },
 
+  _skillList() {
+    return (typeof Game !== 'undefined' && Game.player) ? Game.player.skillList() : SKILL_ORDER;
+  },
+
   layout() {
     const R = {};
     if (this.show.inv) {
@@ -27,21 +31,23 @@ const UI = {
       R.skillClose = { x: r.x + r.w - 26, y: r.y + 7, w: 19, h: 19 };
       R.skillRows = [];
       R.skillPlus = [];
-      SKILL_ORDER.forEach((id, i) => {
+      this._skillList().forEach((id, i) => {
         const ry = r.y + 38 + i * 74;
         R.skillRows.push({ x: r.x + 10, y: ry, w: r.w - 20, h: 68 });
         R.skillPlus.push({ x: r.x + r.w - 46, y: ry + 21, w: 26, h: 26 });
       });
     }
     if (this.show.stat) {
-      const r = { x: 424, y: 70, w: 236, h: 352 };
+      const r = { x: 372, y: 44, w: 324, h: 486 };
       R.stat = r;
       R.statClose = { x: r.x + r.w - 26, y: r.y + 7, w: 19, h: 19 };
       R.statEquips = [];
+      const cols = 4, sz = 46, gapX = 10, gapY = 22, gridY = r.y + 250, startX = r.x + 18;
       EQUIP_SLOTS.forEach((slot, i) => {
-        R.statEquips.push({ slot, x: r.x + 14 + i * 53, y: r.y + 246, w: 46, h: 46 });
+        const col = i % cols, row = Math.floor(i / cols);
+        R.statEquips.push({ slot, x: startX + col * (sz + gapX), y: gridY + row * (sz + gapY), w: sz, h: sz });
       });
-      R.resetBtn = { x: r.x + 14, y: r.y + r.h - 34, w: r.w - 28, h: 24 };
+      R.resetBtn = { x: r.x + 16, y: r.y + r.h - 32, w: r.w - 32, h: 24 };
     }
     this.R = R;
   },
@@ -62,11 +68,11 @@ const UI = {
     if (R.inv && this.inRect(R.inv)) {
       Input.clicked = false;
       if (this.inRect(R.invClose)) { this.show.inv = false; return; }
-      R.invSlots.forEach((s, i) => { if (this.inRect(s)) p.useSlot(i); });
+      R.invSlots.forEach((s, i) => { if (this.inRect(s)) p.useSlot(i, game); });
     } else if (R.skill && this.inRect(R.skill)) {
       Input.clicked = false;
       if (this.inRect(R.skillClose)) { this.show.skill = false; return; }
-      SKILL_ORDER.forEach((id, i) => { if (this.inRect(R.skillPlus[i])) p.skillUp(id); });
+      this._skillList().forEach((id, i) => { if (R.skillPlus[i] && this.inRect(R.skillPlus[i])) p.skillUp(id); });
     } else if (R.stat && this.inRect(R.stat)) {
       Input.clicked = false;
       if (this.inRect(R.statClose)) { this.show.stat = false; return; }
@@ -287,9 +293,10 @@ const UI = {
 
   drawSkill(ctx, p) {
     const r = this.R.skill;
-    this.chrome(ctx, r, `✦ 技能 [K]　剩餘 SP：${p.sp}`, this.R.skillClose);
-    SKILL_ORDER.forEach((id, i) => {
+    this.chrome(ctx, r, `✦ ${p.jobDef.name}技能 [K]　SP：${p.sp}`, this.R.skillClose);
+    this._skillList().forEach((id, i) => {
       const d = SkillDB[id];
+      if (!this.R.skillRows[i]) return;
       const lv = p.skills[id] || 0;
       const row = this.R.skillRows[i];
       const unlocked = p.level >= d.reqLv;
@@ -359,6 +366,7 @@ const UI = {
     const need = expNeed(p.level);
     const rows = [
       ['名稱', CONFIG.PLAYER_NAME],
+      ['職業', p.jobDef.name],
       ['等級', `Lv.${p.level}`],
       ['經驗值', `${((p.exp / need) * 100).toFixed(1)}%`],
       ['攻擊力', p.atk],
@@ -370,27 +378,32 @@ const UI = {
     ];
     ctx.font = '12px "Microsoft JhengHei", sans-serif';
     rows.forEach((row, i) => {
-      const y = r.y + 52 + i * 21;
+      const y = r.y + 48 + i * 19;
       if (i % 2 === 0) {
         ctx.fillStyle = 'rgba(255,255,255,0.035)';
-        Utils.rr(ctx, r.x + 8, y - 13, r.w - 16, 19, 4);
+        Utils.rr(ctx, r.x + 8, y - 13, r.w - 16, 18, 4);
         ctx.fill();
       }
       ctx.textAlign = 'left';
       ctx.fillStyle = '#94a8c8';
       ctx.fillText(row[0], r.x + 14, y);
       ctx.textAlign = 'right';
-      ctx.fillStyle = '#ffeec2';
+      ctx.fillStyle = i === 1 ? p.jobDef.color : '#ffeec2';
       ctx.fillText(String(row[1]), r.x + r.w - 14, y);
     });
+    // 裝備分隔標題
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 12px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#ffe9b0';
+    ctx.fillText('— 裝備 —', r.x + 16, r.y + 240);
     this.R.statEquips.forEach((e) => {
       this._slot(ctx, e, this.inRect(e));
       const id = p.equips[e.slot];
       if (id) Sprites.drawItemIcon(ctx, id, e.x + 23, e.y + 23, 38);
-      ctx.font = '10px "Microsoft JhengHei", sans-serif';
+      ctx.font = '9px "Microsoft JhengHei", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = '#94a8c8';
-      ctx.fillText(EQUIP_SLOT_NAMES[e.slot], e.x + e.w / 2, e.y + e.h + 13);
+      ctx.fillText(EQUIP_SLOT_NAMES[e.slot], e.x + e.w / 2, e.y + e.h + 11);
     });
     const b = this.R.resetBtn;
     const rg = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
@@ -413,12 +426,20 @@ const UI = {
     const lines = [{ t: d.name, c: '#ffe082' }];
     if (d.type === 'use') {
       lines.push({ t: d.desc, c: '#b0bec5' });
+    } else if (d.type === 'material') {
+      lines.push({ t: '材料', c: '#90a4ae' });
+      if (d.desc) lines.push({ t: d.desc, c: '#b0bec5' });
     } else {
-      lines.push({ t: `${EQUIP_SLOT_NAMES[d.slot]}裝備`, c: '#90a4ae' });
+      lines.push({ t: `${EQUIP_SLOT_NAMES[d.slot] || ''}裝備`, c: '#90a4ae' });
+      if (d.class && d.class !== 'any') {
+        const ok = d.class === p.job;
+        lines.push({ t: `限定：${(JobDB[d.class] || {}).name || d.class}`, c: ok ? '#a5d6a7' : '#ef5350' });
+      }
       if (d.atk) lines.push({ t: `攻擊力 +${d.atk}`, c: '#ffab91' });
       if (d.def) lines.push({ t: `防禦力 +${d.def}`, c: '#90caf9' });
       if (d.hp) lines.push({ t: `最大 HP +${d.hp}`, c: '#69f0ae' });
       if (d.mp) lines.push({ t: `最大 MP +${d.mp}`, c: '#64b5f6' });
+      if (d.spd) lines.push({ t: `移動速度 +${d.spd}%`, c: '#80deea' });
       lines.push({ t: `需求等級 ${d.reqLv || 1}`, c: p.level >= (d.reqLv || 1) ? '#a5d6a7' : '#ef5350' });
       if (d.desc) lines.push({ t: d.desc, c: '#b0bec5' });
     }
@@ -561,13 +582,14 @@ const UI = {
     ctx.fillStyle = '#ffe9b0';
     ctx.fillText(`EXP ${((p.exp / need) * 100).toFixed(2)}%`, W - 6, H - 12);
 
-    // 快捷鍵提示
+    // 快捷鍵提示（依職業技能動態顯示）
     ctx.textAlign = 'left';
     ctx.font = '11px "Microsoft JhengHei", sans-serif';
     ctx.fillStyle = '#8fa3bd';
-    ctx.fillText('X 攻擊　C 強力斬　V 迴旋斬　B 能量波　A 治癒術　Space 跳躍', 516, H - 44);
+    const skHint = p.skillList().map((id) => `${SkillDB[id].key} ${SkillDB[id].name}`).join('　');
+    ctx.fillText(`X 攻擊　${skHint}　Space 跳躍`, 510, H - 44);
     ctx.fillStyle = p.sp > 0 ? '#ffd87a' : '#8fa3bd';
-    ctx.fillText(`Z 撿取　1/2 藥水　I 背包　K 技能${p.sp > 0 ? `(SP:${p.sp}!)` : ''}　P 角色　M 音效`, 516, H - 26);
+    ctx.fillText(`Z 撿取　1/2 藥水　I 背包　K 技能${p.sp > 0 ? `(SP:${p.sp}!)` : ''}　P 角色　M 音效`, 510, H - 26);
   },
 
   drawBossBar(ctx, game) {
@@ -716,9 +738,9 @@ const UI = {
     this.panel(ctx, W / 2 - 370, 246, 740, 152, 12);
     const lines = [
       '← →  移動　　Space  跳躍　　↑  爬繩索 / 進入傳送門　　↓+Space  下跳',
-      'X  普通攻擊　　C  強力斬　　V  迴旋斬　　B  能量波　　A  治癒術',
-      'Z  撿取物品　　1 / 2  喝紅 / 藍藥水　　I  背包　　K  技能加點　　P  角色資訊',
-      '打怪升級獲得 SP 學技能、收集裝備，穿越三張地圖挑戰「蘑菇王」！',
+      'X  普通攻擊　　C / V / B / A  職業技能　　Z  撿取　　1 / 2  藥水',
+      'I  背包　　K  技能加點　　P  角色資訊　　M  音效開關',
+      '五大職業、25 張地圖、20+ 種怪物、4 大 Boss——打造你的楓之冒險！',
     ];
     ctx.font = '14px "Microsoft JhengHei", sans-serif';
     lines.forEach((l, i) => {
@@ -732,7 +754,7 @@ const UI = {
     ctx.fillStyle = '#fff385';
     ctx.shadowColor = 'rgba(255,210,90,0.8)';
     ctx.shadowBlur = 12;
-    ctx.fillText(game.hasSave ? '— 按 Enter 繼續冒險 —' : '— 按 Enter 開始冒險 —', W / 2, 452);
+    ctx.fillText(game.hasSave ? '— 按 Enter 繼續冒險 —' : '— 按 Enter 選擇職業開始 —', W / 2, 452);
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
     if (game.hasSave) {
@@ -740,6 +762,95 @@ const UI = {
       ctx.fillStyle = '#94a8c8';
       ctx.fillText('（偵測到存檔。想刪檔重練請按 N）', W / 2, 482);
     }
+  },
+
+  drawClassSelect(ctx, game) {
+    const W = CONFIG.CANVAS_W, H = CONFIG.CANVAS_H;
+    ctx.fillStyle = 'rgba(8,10,26,0.86)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 34px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#ffe9b0';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 6;
+    ctx.fillText('選擇你的職業', W / 2, 84);
+    ctx.shadowBlur = 0;
+
+    const n = JOB_ORDER.length;
+    const cw = 150, gap = 14, total = n * cw + (n - 1) * gap;
+    const x0 = W / 2 - total / 2;
+    const cy = 120, ch = 196;
+    JOB_ORDER.forEach((jid, i) => {
+      const jd = JobDB[jid];
+      const x = x0 + i * (cw + gap);
+      const sel = i === game.selJob;
+      this.panel(ctx, x, cy, cw, ch, 12);
+      if (sel) {
+        ctx.strokeStyle = jd.color;
+        ctx.lineWidth = 3;
+        Utils.rr(ctx, x + 2, cy + 2, cw - 4, ch - 4, 11);
+        ctx.stroke();
+      }
+      // 職業徽章
+      const bx = x + cw / 2, by = cy + 52;
+      const g = ctx.createRadialGradient(bx - 6, by - 8, 3, bx, by, 34);
+      g.addColorStop(0, this._lift(jd.color));
+      g.addColorStop(1, jd.color);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(bx, by, sel ? 33 : 29, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,235,170,0.7)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(bx, by, sel ? 33 : 29, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 30px "Microsoft JhengHei", sans-serif';
+      ctx.fillText(jd.short, bx, by + 11);
+      // 名稱
+      ctx.font = 'bold 17px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = sel ? '#fff' : '#cfd8e8';
+      ctx.fillText(jd.name, bx, cy + 110);
+      ctx.font = '11px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = '#8fa3bd';
+      ctx.fillText(jd.basicType === 'projectile' ? '遠程' : '近戰', bx, cy + 130);
+      // 武器類型
+      ctx.fillStyle = '#94a8c8';
+      ctx.fillText((jd.weaponTypes || []).map((w) => WTYPE_NAMES[w] || w).join(' / '), bx, cy + 150);
+    });
+
+    // 選中職業詳述
+    const jd = JobDB[JOB_ORDER[game.selJob]];
+    const dy = cy + ch + 22;
+    this.panel(ctx, W / 2 - 360, dy, 720, 132, 12);
+    ctx.textAlign = 'center';
+    ctx.font = '14px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#e8eef8';
+    ctx.fillText(jd.desc, W / 2, dy + 30);
+    const m = jd.statMods;
+    ctx.font = '13px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#ffd87a';
+    ctx.fillText(`HP ×${m.hp}　MP ×${m.mp}　攻擊 ×${m.atk}　防禦 ×${m.def}`, W / 2, dy + 58);
+    ctx.fillStyle = '#a8bcd8';
+    const sk = jd.skills.map((id) => `${SkillDB[id].key}·${SkillDB[id].name}`).join('　');
+    ctx.fillText(`技能：${sk}`, W / 2, dy + 84);
+    ctx.fillStyle = '#8fa3bd';
+    ctx.fillText('起始武器：' + (ItemDB[jd.startWeapon] ? ItemDB[jd.startWeapon].name : ''), W / 2, dy + 108);
+
+    const blink = (Math.sin(game.time * 4) + 1) / 2;
+    ctx.globalAlpha = 0.5 + blink * 0.5;
+    ctx.font = 'bold 18px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#fff385';
+    ctx.fillText('← → 選擇　　Enter 確認　　Esc 返回', W / 2, dy + 158);
+    ctx.globalAlpha = 1;
+  },
+
+  _lift(hex) {
+    if (typeof hex !== 'string' || hex[0] !== '#') return '#cfcfe0';
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.min(255, (n >> 16) + 60), g = Math.min(255, ((n >> 8) & 255) + 60), b = Math.min(255, (n & 255) + 60);
+    return `rgb(${r},${g},${b})`;
   },
 
   drawDeath(ctx) {

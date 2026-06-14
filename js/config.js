@@ -16,9 +16,9 @@ const CONFIG = {
   INVINCIBLE_TIME: 1.0, // 受傷後無敵秒數
   PICKUP_RANGE: 55,
   INV_SIZE: 24,
-  MAX_LEVEL: 30,
+  MAX_LEVEL: 100,
 
-  SAVE_KEY: 'mapleworld_save_v1',
+  SAVE_KEY: 'mapleworld_save_v2',
 };
 
 // 升到下一級所需經驗

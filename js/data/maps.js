@@ -1,7 +1,7 @@
 // 地圖資料庫
 // platforms: {x1, x2, y, ground?}  ground=true 表示主地面（不能下跳穿越）
 // ropes:     {x, y1, y2}           y1 為頂端（需對齊某平台的 y）
-// portals:   {id, x, y, target, targetPortal}
+// portals:   {id, x, y, target, targetPortal}（由下方 MAP_CHAIN 自動串接）
 // spawners:  {type, plat, x1, x2, count, respawn}
 const MapDB = {
   meadow: {
@@ -19,9 +19,7 @@ const MapDB = {
       { x: 880,  y1: 340, y2: 560 },
       { x: 1760, y1: 330, y2: 560 },
     ],
-    portals: [
-      { id: 'toForest', x: 2520, y: 560, target: 'forest', targetPortal: 'toMeadow' },
-    ],
+    portals: [],
     spawners: [
       { type: 'snail', plat: 0, x1: 250,  x2: 1150, count: 4, respawn: 6 },
       { type: 'snail', plat: 0, x1: 1300, x2: 2300, count: 3, respawn: 6 },
@@ -53,10 +51,7 @@ const MapDB = {
       { x: 2200, y1: 470, y2: 600 },
       { x: 2350, y1: 350, y2: 470 },
     ],
-    portals: [
-      { id: 'toMeadow', x: 90,   y: 600, target: 'meadow', targetPortal: 'toForest' },
-      { id: 'toCave',   x: 2910, y: 600, target: 'cave',   targetPortal: 'toForest' },
-    ],
+    portals: [],
     spawners: [
       { type: 'slime',    plat: 0, x1: 150,  x2: 700,  count: 2, respawn: 7 },
       { type: 'mushroom', plat: 0, x1: 800,  x2: 2800, count: 5, respawn: 8 },
@@ -86,10 +81,7 @@ const MapDB = {
       { x: 1760, y1: 370, y2: 600 },
       { x: 2230, y1: 470, y2: 600 },
     ],
-    portals: [
-      { id: 'toForest', x: 90,   y: 600, target: 'forest', targetPortal: 'toCave' },
-      { id: 'toAltar',  x: 2710, y: 600, target: 'altar',  targetPortal: 'toCave' },
-    ],
+    portals: [],
     spawners: [
       { type: 'purpleMush', plat: 0, x1: 200,  x2: 2600, count: 5, respawn: 9 },
       { type: 'purpleMush', plat: 2, x1: 680,  x2: 1000, count: 1, respawn: 10 },
@@ -109,11 +101,108 @@ const MapDB = {
       { x1: 1040, x2: 1320, y: 420 },
     ],
     ropes: [],
-    portals: [
-      { id: 'toCave', x: 90, y: 540, target: 'cave', targetPortal: 'toAltar' },
-    ],
+    portals: [],
     spawners: [
       { type: 'boss', plat: 0, x1: 700, x2: 800, count: 1, respawn: 45 },
     ],
   },
 };
+
+// ── 程序化地圖產生器（地面 + 浮空平台 + 繩索 + 刷怪點）──
+function genField(name, theme, w, monsters) {
+  const h = 700, gy = 560;
+  const rnd = Utils.seeded(Utils.hash(name));
+  const platforms = [{ x1: 0, x2: w, y: gy, ground: true }];
+  const ropes = [];
+  let x = 300;
+  while (x < w - 380) {
+    const pw = 260 + Math.floor(rnd() * 180);
+    const y = 360 + Math.floor(rnd() * 4) * 55; // 360 / 415 / 470 / 525
+    platforms.push({ x1: x, x2: x + pw, y });
+    ropes.push({ x: x + 36, y1: y, y2: gy });
+    x += pw + 150 + Math.floor(rnd() * 170);
+  }
+  const spawners = [];
+  monsters.forEach((mn) => {
+    spawners.push({ type: mn.type, plat: 0, x1: 150, x2: w - 150, count: mn.count, respawn: mn.respawn || 8 });
+  });
+  for (let pi = 1; pi < platforms.length; pi++) {
+    const mn = monsters[(pi - 1) % monsters.length];
+    const pl = platforms[pi];
+    spawners.push({ type: mn.type, plat: pi, x1: pl.x1 + 20, x2: pl.x2 - 20, count: 1, respawn: (mn.respawn || 8) + 2 });
+  }
+  return { name, theme, w, h, spawn: { x: 120, y: gy }, platforms, ropes, portals: [], spawners };
+}
+
+function genBoss(name, theme, w, bossType) {
+  const h = 700, gy = 560;
+  const platforms = [
+    { x1: 0, x2: w, y: gy, ground: true },
+    { x1: 180, x2: 480, y: 430 },
+    { x1: w - 480, x2: w - 180, y: 430 },
+  ];
+  return {
+    name, theme, w, h, spawn: { x: 120, y: gy }, platforms, ropes: [], portals: [],
+    spawners: [{ type: bossType, plat: 0, x1: Math.round(w * 0.45), x2: Math.round(w * 0.55), count: 1, respawn: 60 }],
+  };
+}
+
+function genTown(name, theme, w) {
+  const h = 700, gy = 560;
+  const platforms = [
+    { x1: 0, x2: w, y: gy, ground: true },
+    { x1: 300, x2: 640, y: 430 },
+    { x1: 820, x2: 1140, y: 400 },
+  ];
+  const ropes = [{ x: 340, y1: 430, y2: gy }, { x: 860, y1: 400, y2: gy }];
+  return { name, theme, w, h, spawn: { x: 120, y: gy }, platforms, ropes, portals: [], spawners: [] };
+}
+
+// ── 擴充地圖（≥20 張世界）──
+Object.assign(MapDB, {
+  town:        genTown('楓葉鎮', 'meadow', 1800),
+  meadowHill:  genField('草原丘陵', 'meadow', 2600, [{ type: 'snail', count: 4 }, { type: 'redSnail', count: 3 }, { type: 'slime', count: 3 }]),
+  snailHill:   genField('蝸牛山丘', 'meadow', 2800, [{ type: 'redSnail', count: 4 }, { type: 'slime', count: 3 }, { type: 'spore', count: 3 }]),
+  deepForest:  genField('幽森深處', 'forest', 3000, [{ type: 'mushroom', count: 4 }, { type: 'spore', count: 3 }, { type: 'bat', count: 3 }, { type: 'boar', count: 2 }]),
+  antTunnel:   genField('螞蟻隧道', 'cave', 2800, [{ type: 'bat', count: 4 }, { type: 'purpleMush', count: 3 }, { type: 'eye', count: 3 }]),
+  crystalDepths: genField('水晶深淵', 'cave', 3000, [{ type: 'purpleMush', count: 3 }, { type: 'eye', count: 3 }, { type: 'golem', count: 3 }]),
+  snowField:   genField('雪花平原', 'snow', 2800, [{ type: 'iceSlime', count: 4 }, { type: 'penguin', count: 4 }]),
+  snowPeak:    genField('冰封山頂', 'snow', 3000, [{ type: 'penguin', count: 3 }, { type: 'snowman', count: 4 }]),
+  iceCave:     genField('寒冰洞窟', 'snow', 2800, [{ type: 'iceSlime', count: 4 }, { type: 'snowman', count: 3 }]),
+  frostValley: genField('霜凍幽谷', 'snow', 3000, [{ type: 'snowman', count: 4 }, { type: 'yeti', count: 3 }]),
+  yetiLair:    genBoss('雪人巢穴', 'snow', 1700, 'yetiKing'),
+  lavaPath:    genField('火焰之路', 'lava', 2800, [{ type: 'lavaSlime', count: 4 }, { type: 'fireGoblin', count: 3 }]),
+  lavaBridge:  genField('熔岩之橋', 'lava', 3000, [{ type: 'fireGoblin', count: 4 }, { type: 'lavaSlime', count: 3 }]),
+  lavaCore:    genField('熔岩核心', 'lava', 3000, [{ type: 'magmaGolem', count: 3 }, { type: 'drake', count: 3 }]),
+  emberCave:   genField('餘燼洞窟', 'lava', 2800, [{ type: 'drake', count: 3 }, { type: 'magmaGolem', count: 3 }]),
+  flameAltar:  genBoss('炎魔祭壇', 'lava', 1800, 'flameDrake'),
+  castleGate:  genField('古城入口', 'castle', 2800, [{ type: 'zombie', count: 4 }, { type: 'skeleton', count: 3 }]),
+  castleHall:  genField('古城大廳', 'castle', 3000, [{ type: 'skeleton', count: 4 }, { type: 'mummy', count: 3 }]),
+  castleDungeon: genField('古城地牢', 'castle', 3000, [{ type: 'mummy', count: 4 }, { type: 'darkKnight', count: 2 }]),
+  castleTower: genField('暗黑高塔', 'castle', 2800, [{ type: 'darkKnight', count: 3 }, { type: 'skeleton', count: 3 }]),
+  throneRoom:  genBoss('王座之間', 'castle', 1900, 'darkLord'),
+});
+
+// ── 世界連線：依序串接前後傳送門（保證每張地圖皆可步行抵達）──
+const MAP_CHAIN = [
+  'meadow', 'forest', 'cave', 'altar', 'town',
+  'meadowHill', 'snailHill', 'deepForest', 'antTunnel', 'crystalDepths',
+  'snowField', 'snowPeak', 'iceCave', 'frostValley', 'yetiLair',
+  'lavaPath', 'lavaBridge', 'lavaCore', 'emberCave', 'flameAltar',
+  'castleGate', 'castleHall', 'castleDungeon', 'castleTower', 'throneRoom',
+];
+MAP_CHAIN.forEach((id, i) => {
+  const m = MapDB[id];
+  if (!m) return;
+  const ground = m.platforms.find((p) => p.ground) || { y: 560 };
+  const gy = ground.y;
+  const portals = [];
+  if (i > 0) portals.push({ id: 'back', x: 90, y: gy, target: MAP_CHAIN[i - 1], targetPortal: 'fwd' });
+  if (i < MAP_CHAIN.length - 1) portals.push({ id: 'fwd', x: m.w - 90, y: gy, target: MAP_CHAIN[i + 1], targetPortal: 'back' });
+  m.portals = portals;
+});
+
+// 每張地圖預設專屬背景檔名 <id>-bg.png；提供該檔即自動套用，否則回退主題共用背景
+for (const id in MapDB) {
+  if (!MapDB[id].bg) MapDB[id].bg = id + '-bg.png';
+}

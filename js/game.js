@@ -11,6 +11,7 @@ const Game = {
   time: 0,
   saveTimer: 0,
   hasSave: false,
+  selJob: 0,
 
   init() {
     const save = this.loadSave();
@@ -193,16 +194,35 @@ const Game = {
       for (const m of this.monsters) m.update(dt, this);
       Effects.update(dt);
       if (Input.pressed['Enter']) {
-        this.state = 'play';
-        Effects.announce('歡迎來到楓之世界！打怪升級，挑戰蘑菇王吧！', '#ffe082');
+        if (this.hasSave) {
+          this.state = 'play';
+          Effects.announce('歡迎回來，繼續你的冒險！', '#ffe082');
+        } else {
+          this.selJob = 0;
+          this.state = 'classSelect';
+        }
       } else if (Input.pressed['KeyN'] && this.hasSave) {
         this.clearSave();
         this.hasSave = false;
-        this.player = new Player(null);
+        this.selJob = 0;
+        this.state = 'classSelect';
+      }
+      return;
+    }
+
+    if (this.state === 'classSelect') {
+      for (const m of this.monsters) m.update(dt, this);
+      Effects.update(dt);
+      if (Input.pressed['ArrowLeft']) { this.selJob = (this.selJob + JOB_ORDER.length - 1) % JOB_ORDER.length; Sound.play('equip'); }
+      if (Input.pressed['ArrowRight']) { this.selJob = (this.selJob + 1) % JOB_ORDER.length; Sound.play('equip'); }
+      if (Input.pressed['Escape']) { this.state = 'title'; return; }
+      if (Input.pressed['Enter'] || Input.pressed['Space']) {
+        const job = JOB_ORDER[this.selJob];
+        this.player = new Player(null, job);
         this.loadMap('meadow', null, null);
         Camera.snap(this.player, this.map);
         this.state = 'play';
-        Effects.announce('開始全新的冒險！', '#ffe082');
+        Effects.announce(`你成為了${JobDB[job].name}！冒險開始！`, '#ffe082');
       }
       return;
     }
@@ -304,6 +324,7 @@ const Game = {
     UI.draw(ctx, this);
     Effects.drawScreen(ctx);
     if (this.state === 'title') UI.drawTitle(ctx, this);
+    if (this.state === 'classSelect') UI.drawClassSelect(ctx, this);
     if (this.state === 'dead') UI.drawDeath(ctx);
   },
 };
