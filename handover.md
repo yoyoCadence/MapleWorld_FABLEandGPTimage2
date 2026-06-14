@@ -240,6 +240,69 @@ look), so nothing breaks if a file is absent.
   PNGs (6), weapon PNGs, monster sheets, projectile PNGs, impact/explosion FX all
   present. No missing-asset gaps found in this pass.
 
+## Gameplay Pass (Claude, 2026-06-14) + NEW ASSET REQUESTS
+
+Added gameplay systems requested by the user. All new art has a procedural
+fallback, so the game runs without the PNGs; drop a matching file to upgrade.
+
+### New systems wired
+- Hold-Z continuous pickup (auto-grabs nearby drops while Z is held).
+- Pet system: every player starts with one pet (`Game.pet`). It follows the
+  hero and periodically auto-attacks a nearby monster for ~30% of player ATK.
+- Inventory tabs: 全部 / 消耗 / 裝備 / 材料 (All / Use / Equip / Material).
+- Expandable inventory: starts 24 slots, up to `CONFIG.INV_MAX` (36); locked
+  slots show a lock icon; bought from the shop.
+- Merchant NPC on every map (`map.npc`, on a small platform near the entrance).
+  Press Up next to it to open the shop.
+- Shop with 3 tabs: 購買 (buy curated consumables), 賣出 (sell any item at 60%),
+  背包格 (buy +4 inventory slots, cost scales 800 * (n+1)).
+
+### NEW ASSET REQUESTS (please produce; ASCII filenames below)
+
+1) BETTER ITEM ICONS (current ones are too plain)
+   - Path: `assets/ui/items/<itemId>.png`, 32x32 (or 64x64), transparent.
+   - These are already wired and override the procedural icons. Replace the
+     85 existing flat-gem icons with detailed, MapleStory-style icons.
+   - One file per item id. Full id list is in `js/data/items.js` (keys of
+     ItemDB). Examples: `redPotion.png`, `dragonSlayer.png`, `arcaneStaff.png`,
+     `dragonHelm.png`, `powerRing.png`, `snailShell.png`, `dragonScale.png`.
+   - Style guidance: clear silhouette, rarity-tinted border optional, readable
+     at 32px, consistent lighting (top-left), drop shadow optional.
+   - Meso coin icon: `assets/ui/icon_meso.png` (32x32).
+
+2) CLIMBING / ROPE POSE (per class)
+   - Path: `assets/sprites/player/hero-<job>-climb.png` where job is one of
+     warrior / magician / archer / thief / pirate (warrior may reuse adventurer).
+   - Single static back-view climbing pose, ~220x260, facing the rope, arms up
+     gripping. Engine auto-uses it while climbing; otherwise it reuses the normal
+     standing hero and just rotates it.
+   - (Optional) a rope/ladder tile is already drawn procedurally; if you want a
+     custom rope sprite, say so and I will add a hook.
+
+3) PET ART ("Baroque"-style companion the user described)
+   - Path: `assets/sprites/pet/pet-default.png`, single static sprite, ~64x64,
+     facing right, transparent. Engine flips / bobs / lunges it on attack.
+   - Current placeholder is a small round orange winged creature (procedural).
+   - For more pet types later: `pet-<type>.png` and set the type in
+     `new Pet('<type>')` (currently always 'default').
+
+4) MERCHANT NPC ART
+   - Path: `assets/sprites/npc/npc-merchant.png`, single static sprite, ~?x74,
+     facing right, transparent. Engine adds the floating "Up = shop" bubble.
+   - Current placeholder is a procedural hooded merchant.
+
+5) (Optional) SHOP / TAB UI ART
+   - Tabs and shop rows are procedural (match the panel skin). If you want
+     dedicated tab button art or a shopkeeper portrait, provide specs and I will
+     wire them.
+
+### Verification
+- `node tests\smoke.test.js` -> 65 passed, 0 failed (added checks for hold-Z
+  pickup, pet auto-attack, inventory expand cap, shop open/draw, plus the UI /
+  item-icon load checks from the previous pass).
+- Headless preview confirms: inventory tabs + locked slots, shop buy/sell/expand
+  tabs, merchant NPC with bubble, pet following the hero, green slime fixed.
+
 ## Recommended Next Steps
 
 The new animation sheets are functional and integrated, but most are generated from static PNGs. Good follow-up work:

@@ -15,7 +15,9 @@ const CONFIG = {
 
   INVINCIBLE_TIME: 1.0, // 受傷後無敵秒數
   PICKUP_RANGE: 55,
-  INV_SIZE: 24,
+  INV_SIZE: 24,        // 初始背包格數
+  INV_MAX: 36,         // 背包格上限（6x6，可向商人擴充）
+  INV_EXPAND_STEP: 4,  // 每次擴充增加格數
   MAX_LEVEL: 100,
 
   SAVE_KEY: 'mapleworld_save_v2',

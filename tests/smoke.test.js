@@ -65,7 +65,7 @@ const order = [
   'js/config.js', 'js/utils.js', 'js/input.js', 'js/sound.js',
   'js/data/items.js', 'js/data/skills.js', 'js/data/classes.js', 'js/data/monsters.js', 'js/data/maps.js',
   'js/effects.js', 'js/sprites.js', 'js/camera.js',
-  'js/entities/drops.js', 'js/entities/projectile.js', 'js/entities/monster.js', 'js/entities/player.js',
+  'js/entities/drops.js', 'js/entities/projectile.js', 'js/entities/monster.js', 'js/entities/pet.js', 'js/entities/player.js',
   'js/render.js', 'js/ui.js', 'js/game.js', 'js/main.js',
 ];
 const root = path.join(__dirname, '..');
@@ -154,6 +154,7 @@ const mesoBefore = Game.player.meso;
 press('KeyZ');
 frames(1);
 check('撿到楓幣', Game.player.meso === mesoBefore + 100);
+Input.down['KeyZ'] = false; // 模擬放開按鍵（按住 Z 連撿會持續觸發）
 
 // 6. 升級與技能加點
 Game.player.gainExp(expNeed(1) + expNeed(2) + expNeed(3) + expNeed(4) + 10);
@@ -287,6 +288,39 @@ check('UI 面板素材載入', __loadedImages.includes('assets/ui/ui_panel.png')
 check('UI 格子素材載入', __loadedImages.includes('assets/ui/ui_slot.png'));
 check('UI 標題列素材載入', __loadedImages.includes('assets/ui/ui_titlebar.png'));
 check('楓幣圖示素材載入', __loadedImages.includes('assets/ui/icon_meso.png'));
+
+// 15. 新功能：按住 Z 連撿 / 寵物 / 背包擴充 / 商店
+Game.state = 'play';
+Game.loadMap('meadow', null, null);
+const pp = Game.player;
+pp.x = 400; pp.y = 560; pp.invinc = 100;
+for (let i = 0; i < 3; i++) Game.drops.push(new Drop(pp.x + (i - 1) * 8, pp.y - 8, pp.y, { meso: 50 }));
+const mb = pp.meso;
+Input.down['KeyZ'] = true;
+frames(30);
+Input.down['KeyZ'] = false;
+check('按住 Z 連續撿取多個掉落物', pp.meso >= mb + 100);
+
+check('一開始就有寵物', !!Game.pet);
+Game.monsters.length = 0;
+const tmob = Game.spawnMonster('snail', pp.x + 40, Game.map.platforms[0], null);
+Game.pet.x = pp.x; Game.pet.y = pp.y; Game.pet.atkCd = 0;
+const tmhp = tmob.hp;
+Game.pet.update(1 / 60, Game);
+check('寵物自動攻擊造成傷害', tmob.hp < tmhp);
+
+const sz0 = pp.invSize;
+const added = pp.expandInv(CONFIG.INV_EXPAND_STEP);
+check('背包可擴充格數', added > 0 && pp.invSize === sz0 + added);
+pp.invSize = CONFIG.INV_MAX;
+check('背包擴充不超過上限', pp.expandInv(CONFIG.INV_EXPAND_STEP) === 0);
+
+UI.openShop();
+check('商店可開啟', UI.show.shop === true);
+let shopOk = true;
+try { Game.draw(ctxStub_); } catch (e) { shopOk = false; console.error(e); }
+check('商店繪製不報錯', shopOk);
+UI.show.shop = false;
 
 console.log(\`\\n煙霧測試結果：\${__pass} 通過，\${__fail} 失敗\`);
 if (__fail > 0) process.exit(1);

@@ -1,12 +1,39 @@
 // HUD 與所有遊戲視窗（奇幻 RPG 風格外觀；佈局與點擊判定座標不變）
 const UI = {
-  show: { inv: false, skill: false, stat: false },
+  show: { inv: false, skill: false, stat: false, shop: false },
   R: {},
   confirmReset: 0,
+  invTab: 'all',
+  shopTab: 'buy',
+  INV_TABS: [['all', '全部'], ['use', '消耗'], ['equip', '裝備'], ['material', '材料']],
+  SHOP_TABS: [['buy', '購買'], ['sell', '賣出'], ['expand', '背包格']],
+  buyList: [
+    { id: 'redPotion', price: 30 }, { id: 'orangePotion', price: 90 },
+    { id: 'whitePotion', price: 300 }, { id: 'bluePotion', price: 40 },
+    { id: 'manaElixir', price: 200 }, { id: 'elixir', price: 400 },
+    { id: 'powerElixir', price: 1200 }, { id: 'returnScroll', price: 150 },
+  ],
 
   inRect(r) {
     return Input.mouseX >= r.x && Input.mouseX <= r.x + r.w &&
            Input.mouseY >= r.y && Input.mouseY <= r.y + r.h;
+  },
+
+  openShop() { this.show.shop = true; this.shopTab = 'buy'; Sound.play('portal'); },
+  _cat(id) { const d = ItemDB[id]; return d ? d.type : 'use'; },
+  _valueOf(id) {
+    const d = ItemDB[id];
+    if (!d) return 10;
+    const bl = this.buyList.find((b) => b.id === id);
+    if (bl) return bl.price;
+    if (d.type === 'use') return Math.max(10, Math.round(((d.heal || 0) + (d.mpHeal || 0)) / 6));
+    if (d.type === 'material') return 25;
+    return Math.round(((d.atk || 0) + (d.def || 0)) * 8 + (d.hp || 0) * 0.4 + (d.mp || 0) * 0.4 + (d.reqLv || 1) * 18 + 40);
+  },
+  _sellOf(id) { return Math.max(1, Math.floor(this._valueOf(id) * 0.6)); },
+  _expandCost(p) {
+    const done = Math.round((p.invSize - CONFIG.INV_SIZE) / CONFIG.INV_EXPAND_STEP);
+    return 800 * (done + 1);
   },
 
   _skillList() {
@@ -40,13 +67,34 @@ const UI = {
   layout() {
     const R = {};
     if (this.show.inv) {
-      const r = { x: 670, y: 70, w: 342, h: 286 };
+      const r = { x: 660, y: 64, w: 348, h: 432 };
       R.inv = r;
       R.invClose = { x: r.x + r.w - 26, y: r.y + 7, w: 19, h: 19 };
+      // 分頁
+      R.invTabs = [];
+      const tw = (r.w - 24) / this.INV_TABS.length;
+      this.INV_TABS.forEach((tb, i) => {
+        R.invTabs.push({ key: tb[0], label: tb[1], x: r.x + 12 + i * tw, y: r.y + 34, w: tw - 4, h: 22 });
+      });
+      // 6x6 格 + 視圖對應
+      const p = (typeof Game !== 'undefined' && Game.player) ? Game.player : null;
+      const invSize = p ? p.invSize : CONFIG.INV_SIZE;
       R.invSlots = [];
-      for (let i = 0; i < CONFIG.INV_SIZE; i++) {
+      R.invCells = [];
+      for (let i = 0; i < 36; i++) {
         const col = i % 6, row = Math.floor(i / 6);
-        R.invSlots.push({ x: r.x + 12 + col * 54, y: r.y + 38 + row * 54, w: 48, h: 48 });
+        R.invSlots.push({ x: r.x + 14 + col * 54, y: r.y + 64 + row * 54, w: 48, h: 48 });
+      }
+      if (this.invTab === 'all') {
+        for (let i = 0; i < 36; i++) R.invCells.push(i < invSize ? i : -1); // -1 = 鎖定
+      } else {
+        if (p) {
+          for (let i = 0; i < invSize; i++) {
+            const it = p.inventory[i];
+            if (it && this._cat(it.id) === this.invTab) R.invCells.push(i);
+          }
+        }
+        while (R.invCells.length < 36) R.invCells.push(null); // null = 空白
       }
     }
     if (this.show.skill) {
@@ -73,6 +121,32 @@ const UI = {
       });
       R.resetBtn = { x: r.x + 16, y: r.y + r.h - 32, w: r.w - 32, h: 24 };
     }
+    if (this.show.shop) {
+      const r = { x: 312, y: 80, w: 400, h: 432 };
+      R.shop = r;
+      R.shopClose = { x: r.x + r.w - 26, y: r.y + 7, w: 19, h: 19 };
+      R.shopTabs = [];
+      const tw = (r.w - 24) / this.SHOP_TABS.length;
+      this.SHOP_TABS.forEach((tb, i) => {
+        R.shopTabs.push({ key: tb[0], label: tb[1], x: r.x + 12 + i * tw, y: r.y + 34, w: tw - 4, h: 24 });
+      });
+      R.shopRows = [];
+      const top = r.y + 72;
+      const p = (typeof Game !== 'undefined' && Game.player) ? Game.player : null;
+      if (this.shopTab === 'buy') {
+        this.buyList.forEach((b, i) => R.shopRows.push({ kind: 'buy', i, x: r.x + 12, y: top + i * 42, w: r.w - 24, h: 38 }));
+      } else if (this.shopTab === 'sell' && p) {
+        let n = 0;
+        for (let i = 0; i < p.invSize; i++) {
+          if (!p.inventory[i]) continue;
+          const col = n % 6, row = Math.floor(n / 6);
+          R.shopRows.push({ kind: 'sell', slot: i, x: r.x + 18 + col * 61, y: top + row * 58, w: 50, h: 50 });
+          n++;
+        }
+      } else if (this.shopTab === 'expand') {
+        R.shopExpandBtn = { x: r.x + 50, y: top + 132, w: r.w - 100, h: 42 };
+      }
+    }
     this.R = R;
   },
 
@@ -82,17 +156,60 @@ const UI = {
     if (Input.pressed['KeyK']) this.show.skill = !this.show.skill;
     if (Input.pressed['KeyP']) this.show.stat = !this.show.stat;
     if (Input.pressed['Escape']) {
-      this.show.inv = this.show.skill = this.show.stat = false;
+      this.show.inv = this.show.skill = this.show.stat = this.show.shop = false;
     }
     this.layout();
     if (!Input.clicked) return;
 
     const p = game.player;
     const R = this.R;
+    if (R.shop && this.inRect(R.shop)) {
+      Input.clicked = false;
+      if (this.inRect(R.shopClose)) { this.show.shop = false; return; }
+      for (const tb of R.shopTabs) { if (this.inRect(tb)) { this.shopTab = tb.key; Sound.play('equip'); return; } }
+      if (this.shopTab === 'buy') {
+        for (const row of R.shopRows) {
+          if (this.inRect(row)) {
+            const b = this.buyList[row.i];
+            if (p.meso < b.price) { Effects.announce('楓幣不足', '#ef9a9a'); Sound.play('error'); }
+            else if (!p.addItem(b.id, 1)) { Effects.announce('背包已滿', '#ef9a9a'); Sound.play('error'); }
+            else { p.meso -= b.price; Sound.play('meso'); }
+            return;
+          }
+        }
+      } else if (this.shopTab === 'sell') {
+        for (const row of R.shopRows) {
+          if (this.inRect(row)) {
+            const it = p.inventory[row.slot];
+            if (it) {
+              const v = this._sellOf(it.id);
+              p.meso += v;
+              it.qty--;
+              if (it.qty <= 0) p.inventory[row.slot] = null;
+              Effects.spawnText(p.x, p.y - 70, `+${v} 楓幣`, '#ffd54f');
+              Sound.play('meso');
+            }
+            return;
+          }
+        }
+      } else if (R.shopExpandBtn && this.inRect(R.shopExpandBtn)) {
+        const cost = this._expandCost(p);
+        if (p.invSize >= CONFIG.INV_MAX) { Effects.announce('背包已達上限', '#ef9a9a'); Sound.play('error'); }
+        else if (p.meso < cost) { Effects.announce('楓幣不足', '#ef9a9a'); Sound.play('error'); }
+        else { p.expandInv(CONFIG.INV_EXPAND_STEP); p.meso -= cost; Sound.play('equip'); Effects.announce(`背包格數 +${CONFIG.INV_EXPAND_STEP}！`, '#a5d6a7'); }
+      }
+      return;
+    }
     if (R.inv && this.inRect(R.inv)) {
       Input.clicked = false;
       if (this.inRect(R.invClose)) { this.show.inv = false; return; }
-      R.invSlots.forEach((s, i) => { if (this.inRect(s)) p.useSlot(i, game); });
+      for (const tb of R.invTabs) { if (this.inRect(tb)) { this.invTab = tb.key; Sound.play('equip'); return; } }
+      R.invSlots.forEach((s, i) => {
+        if (!this.inRect(s)) return;
+        const idx = R.invCells[i];
+        if (idx === -1) { Effects.announce('背包已滿，向商人擴充格子', '#ffd54f'); Sound.play('error'); }
+        else if (idx != null) p.useSlot(idx, game);
+      });
     } else if (R.skill && this.inRect(R.skill)) {
       Input.clicked = false;
       if (this.inRect(R.skillClose)) { this.show.skill = false; return; }
@@ -121,6 +238,7 @@ const UI = {
     if (this.show.inv) this.drawInv(ctx, p);
     if (this.show.skill) this.drawSkill(ctx, p);
     if (this.show.stat) this.drawStat(ctx, p);
+    if (this.show.shop) this.drawShop(ctx, p);
     this.drawTooltip(ctx, p);
   },
 
@@ -318,12 +436,43 @@ const UI = {
 
   // ══════════════════ 視窗 ══════════════════
 
+  // 分頁按鈕
+  _tabBtn(ctx, t, active) {
+    const g = ctx.createLinearGradient(0, t.y, 0, t.y + t.h);
+    g.addColorStop(0, active ? 'rgba(96,124,220,0.55)' : 'rgba(255,255,255,0.05)');
+    g.addColorStop(1, active ? 'rgba(56,76,160,0.35)' : 'rgba(255,255,255,0.02)');
+    ctx.fillStyle = g;
+    Utils.rr(ctx, t.x, t.y, t.w, t.h, 6);
+    ctx.fill();
+    ctx.strokeStyle = active ? 'rgba(232,196,110,0.9)' : 'rgba(120,130,180,0.3)';
+    ctx.lineWidth = active ? 1.6 : 1;
+    Utils.rr(ctx, t.x, t.y, t.w, t.h, 6);
+    ctx.stroke();
+    ctx.fillStyle = active ? '#ffeec2' : '#9aa6c0';
+    ctx.font = 'bold 12px "Microsoft JhengHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(t.label, t.x + t.w / 2, t.y + t.h - 6);
+  },
+
   drawInv(ctx, p) {
     const r = this.R.inv;
     this.chrome(ctx, r, '🎒 背包 [I]', this.R.invClose);
+    for (const tb of this.R.invTabs) this._tabBtn(ctx, tb, this.invTab === tb.key);
     this.R.invSlots.forEach((s, i) => {
+      const idx = this.R.invCells[i];
+      if (idx === -1) {
+        // 鎖定格（尚未擴充）
+        ctx.globalAlpha = 0.4;
+        this._slot(ctx, s, false);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(120,130,160,0.6)';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🔒', s.x + s.w / 2, s.y + s.h / 2 + 6);
+        return;
+      }
       this._slot(ctx, s, this.inRect(s));
-      const it = p.inventory[i];
+      const it = (idx != null) ? p.inventory[idx] : null;
       if (it) {
         Sprites.drawItemIcon(ctx, it.id, s.x + 24, s.y + 24, 40);
         if (it.qty > 1) {
@@ -337,6 +486,105 @@ const UI = {
         }
       }
     });
+    Sprites.drawItemIcon(ctx, 'meso', r.x + 22, r.y + r.h - 17, 20);
+    ctx.font = 'bold 13px "Microsoft JhengHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffd87a';
+    ctx.fillText(Utils.fmt(p.meso), r.x + 36, r.y + r.h - 12);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#94a8c8';
+    ctx.font = '11px "Microsoft JhengHei", sans-serif';
+    ctx.fillText(`${p.invSize}/${CONFIG.INV_MAX} 格`, r.x + r.w - 14, r.y + r.h - 12);
+  },
+
+  drawShop(ctx, p) {
+    const r = this.R.shop;
+    this.chrome(ctx, r, '🛒 雜貨商人', this.R.shopClose);
+    for (const tb of this.R.shopTabs) this._tabBtn(ctx, tb, this.shopTab === tb.key);
+
+    if (this.shopTab === 'buy') {
+      for (const row of this.R.shopRows) {
+        const b = this.buyList[row.i];
+        const d = ItemDB[b.id];
+        const hover = this.inRect(row);
+        const afford = p.meso >= b.price;
+        ctx.fillStyle = hover ? 'rgba(255,222,130,0.10)' : 'rgba(255,255,255,0.04)';
+        Utils.rr(ctx, row.x, row.y, row.w, row.h, 7);
+        ctx.fill();
+        ctx.strokeStyle = hover ? 'rgba(255,222,130,0.7)' : 'rgba(120,130,180,0.25)';
+        ctx.lineWidth = 1;
+        Utils.rr(ctx, row.x, row.y, row.w, row.h, 7);
+        ctx.stroke();
+        Sprites.drawItemIcon(ctx, b.id, row.x + 24, row.y + 19, 30);
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 13px "Microsoft JhengHei", sans-serif';
+        ctx.fillStyle = '#ffeec2';
+        ctx.fillText(d ? d.name : b.id, row.x + 46, row.y + 17);
+        ctx.font = '10px "Microsoft JhengHei", sans-serif';
+        ctx.fillStyle = '#a8bcd8';
+        ctx.fillText(d && d.desc ? d.desc : '', row.x + 46, row.y + 31);
+        ctx.textAlign = 'right';
+        ctx.font = 'bold 13px Verdana';
+        ctx.fillStyle = afford ? '#ffd87a' : '#ef9a9a';
+        ctx.fillText(`${Utils.fmt(b.price)} 楓幣`, row.x + row.w - 14, row.y + 24);
+      }
+    } else if (this.shopTab === 'sell') {
+      if (!this.R.shopRows.length) {
+        ctx.textAlign = 'center';
+        ctx.font = '13px "Microsoft JhengHei", sans-serif';
+        ctx.fillStyle = '#94a8c8';
+        ctx.fillText('背包沒有可賣出的物品', r.x + r.w / 2, r.y + 150);
+      }
+      for (const row of this.R.shopRows) {
+        const it = p.inventory[row.slot];
+        if (!it) continue;
+        this._slot(ctx, row, this.inRect(row));
+        Sprites.drawItemIcon(ctx, it.id, row.x + 25, row.y + 22, 38);
+        if (it.qty > 1) {
+          ctx.font = 'bold 10px Verdana';
+          ctx.textAlign = 'right';
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+          ctx.strokeText(it.qty, row.x + row.w - 3, row.y + 16);
+          ctx.fillStyle = '#ffeec2';
+          ctx.fillText(it.qty, row.x + row.w - 3, row.y + 16);
+        }
+        ctx.font = '9px Verdana';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffd87a';
+        ctx.fillText(this._sellOf(it.id), row.x + row.w / 2, row.y + row.h - 3);
+      }
+      ctx.textAlign = 'center';
+      ctx.font = '10px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = '#8fa3bd';
+      ctx.fillText('點擊物品以 60% 價格賣出', r.x + r.w / 2, r.y + r.h - 30);
+    } else {
+      // expand
+      ctx.textAlign = 'center';
+      ctx.font = '14px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = '#e8eef8';
+      ctx.fillText(`目前背包格數：${p.invSize} / ${CONFIG.INV_MAX}`, r.x + r.w / 2, r.y + 110);
+      const maxed = p.invSize >= CONFIG.INV_MAX;
+      const cost = this._expandCost(p);
+      const b = this.R.shopExpandBtn;
+      const hover = this.inRect(b);
+      const afford = p.meso >= cost && !maxed;
+      const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+      g.addColorStop(0, maxed ? 'rgba(120,120,140,0.4)' : afford ? (hover ? '#7cd86a' : '#6cc25a') : 'rgba(170,60,52,0.5)');
+      g.addColorStop(1, maxed ? 'rgba(80,80,100,0.4)' : afford ? '#2e7d32' : 'rgba(120,36,30,0.5)');
+      ctx.fillStyle = g;
+      Utils.rr(ctx, b.x, b.y, b.w, b.h, 8);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,235,170,0.5)';
+      ctx.lineWidth = 1.2;
+      Utils.rr(ctx, b.x, b.y, b.w, b.h, 8);
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px "Microsoft JhengHei", sans-serif';
+      ctx.fillText(maxed ? '已達上限' : `擴充 +${CONFIG.INV_EXPAND_STEP} 格（${Utils.fmt(cost)} 楓幣）`, b.x + b.w / 2, b.y + 27);
+    }
+
+    // 玩家持有楓幣
     Sprites.drawItemIcon(ctx, 'meso', r.x + 22, r.y + r.h - 17, 20);
     ctx.font = 'bold 13px "Microsoft JhengHei", sans-serif';
     ctx.textAlign = 'left';
@@ -512,12 +760,24 @@ const UI = {
   drawTooltip(ctx, p) {
     let lines = null;
     const R = this.R;
-    if (R.invSlots) {
+    // 商店賣出格優先
+    if (R.shop && R.shopRows && this.shopTab === 'sell') {
+      for (const row of R.shopRows) {
+        const it = p.inventory[row.slot];
+        if (this.inRect(row) && it) {
+          lines = this.itemLines(ItemDB[it.id], p, `點擊：賣出 ${this._sellOf(it.id)} 楓幣`);
+        }
+      }
+    }
+    if (!lines && R.invSlots && !this.show.shop) {
       R.invSlots.forEach((s, i) => {
-        const it = p.inventory[i];
+        const idx = R.invCells ? R.invCells[i] : i;
+        if (idx == null || idx < 0) return;
+        const it = p.inventory[idx];
         if (this.inRect(s) && it) {
           const d = ItemDB[it.id];
-          lines = this.itemLines(d, p, d.type === 'use' ? '點擊：使用' : '點擊：裝備');
+          const act = d.type === 'use' ? '點擊：使用' : d.type === 'material' ? '材料' : '點擊：裝備';
+          lines = this.itemLines(d, p, act);
         }
       });
     }
@@ -651,7 +911,7 @@ const UI = {
     const skHint = p.skillList().map((id) => `${SkillDB[id].key} ${SkillDB[id].name}`).join('　');
     ctx.fillText(`X 攻擊　${skHint}　Space 跳躍`, 510, H - 44);
     ctx.fillStyle = p.sp > 0 ? '#ffd87a' : '#8fa3bd';
-    ctx.fillText(`Z 撿取　1/2 藥水　I 背包　K 技能${p.sp > 0 ? `(SP:${p.sp}!)` : ''}　P 角色　M 音效`, 510, H - 26);
+    ctx.fillText(`Z 撿取(按住連撿)　↑ 商店/傳送　I 背包　K 技能${p.sp > 0 ? `(SP:${p.sp}!)` : ''}　P 角色`, 510, H - 26);
   },
 
   drawBossBar(ctx, game) {

@@ -206,3 +206,14 @@ MAP_CHAIN.forEach((id, i) => {
 for (const id in MapDB) {
   if (!MapDB[id].bg) MapDB[id].bg = id + '-bg.png';
 }
+
+// 每張地圖放一位商人 NPC（站在靠近入口的小平台旁），可買賣 / 擴充背包
+for (const id in MapDB) {
+  const m = MapDB[id];
+  if (m.npc) continue;
+  const ground = m.platforms.find((p) => p.ground) || { y: 560 };
+  const nx = Math.min(300, m.w - 120);
+  m.npc = { x: nx, y: ground.y, name: '雜貨商人' };
+  // 商人後方的小裝飾平台
+  m.platforms.push({ x1: nx - 70, x2: nx + 70, y: ground.y - 96 });
+}

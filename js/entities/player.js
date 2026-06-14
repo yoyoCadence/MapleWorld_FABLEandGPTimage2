@@ -22,7 +22,9 @@ class Player {
     this.skills[jd.skills[0]] = 1;   // 起始技能
     this.skillCds = {};
     this.buffs = {};                 // id -> { atk, def, speed, until }
-    this.inventory = new Array(CONFIG.INV_SIZE).fill(null);
+    this.invSize = (save && save.invSize) || CONFIG.INV_SIZE;
+    this.pickupCd = 0;
+    this.inventory = new Array(this.invSize).fill(null);
     this.equips = {};
     for (const slot of EQUIP_SLOTS) this.equips[slot] = null;
     this.equips.weapon = jd.startWeapon;
@@ -86,6 +88,7 @@ class Player {
     this.gcd = Math.max(0, this.gcd - dt);
     this.dropT = Math.max(0, this.dropT - dt);
     this.outCombat += dt;
+    this.pickupCd = Math.max(0, this.pickupCd - dt);
     for (const k in this.skillCds) this.skillCds[k] = Math.max(0, this.skillCds[k] - dt);
     for (const k in this.buffs) if (game.time >= this.buffs[k].until) delete this.buffs[k];
 
@@ -155,11 +158,15 @@ class Player {
       }
     }
 
-    // ↑ 進入傳送門
+    // ↑ 進入傳送門 / 與商人 NPC 對話
     if (Input.pressed['ArrowUp']) {
       const portal = map.portals.find((po) => Math.abs(po.x - this.x) < 36 && Math.abs(po.y - this.y) < 30);
       if (portal) {
         game.transfer(portal.target, portal.targetPortal);
+        return;
+      }
+      if (map.npc && Math.abs(map.npc.x - this.x) < 46 && this.onGround) {
+        UI.openShop();
         return;
       }
     }
@@ -186,9 +193,13 @@ class Player {
     for (const id of this.skillList()) {
       if (Input.pressed[SkillDB[id].code]) this.castSkill(id, game);
     }
-    if (Input.pressed['Digit1']) this.quickPotion(['redPotion', 'orangePotion', 'elixir']);
-    if (Input.pressed['Digit2']) this.quickPotion(['bluePotion', 'elixir']);
-    if (Input.pressed['KeyZ']) this.pickup(game);
+    if (Input.pressed['Digit1']) this.quickPotion(['redPotion', 'orangePotion', 'whitePotion', 'elixir', 'powerElixir']);
+    if (Input.pressed['Digit2']) this.quickPotion(['bluePotion', 'manaElixir', 'elixir', 'powerElixir']);
+    // 按住 Z 持續撿取
+    if (Input.down['KeyZ'] && this.pickupCd <= 0) {
+      this.pickup(game);
+      this.pickupCd = 0.13;
+    }
 
     // ── 物理 ──
     this.vy = Math.min(this.vy + CONFIG.GRAVITY * dt, CONFIG.MAX_FALL);
@@ -523,6 +534,15 @@ class Player {
     Sound.play('equip');
   }
 
+  // 擴充背包格數（商人購買）
+  expandInv(count) {
+    const add = Math.min(count, CONFIG.INV_MAX - this.invSize);
+    if (add <= 0) return 0;
+    this.invSize += add;
+    while (this.inventory.length < this.invSize) this.inventory.push(null);
+    return add;
+  }
+
   // ── 存檔 ──
   serialize() {
     return {
@@ -530,7 +550,7 @@ class Player {
       job: this.job,
       level: this.level, exp: this.exp,
       hp: Math.round(this.hp), mp: Math.round(this.mp),
-      meso: this.meso, sp: this.sp,
+      meso: this.meso, sp: this.sp, invSize: this.invSize,
       skills: this.skills, inventory: this.inventory, equips: this.equips,
     };
   }
@@ -543,8 +563,9 @@ class Player {
     this.sp = s.sp || 0;
     this.skills = s.skills || {};
     if (!Object.keys(this.skills).length) this.skills[this.jobDef.skills[0]] = 1;
-    const inv = new Array(CONFIG.INV_SIZE).fill(null);
-    (s.inventory || []).slice(0, CONFIG.INV_SIZE).forEach((v, i) => { inv[i] = v; });
+    this.invSize = Math.min(CONFIG.INV_MAX, Math.max(CONFIG.INV_SIZE, s.invSize || CONFIG.INV_SIZE));
+    const inv = new Array(this.invSize).fill(null);
+    (s.inventory || []).slice(0, this.invSize).forEach((v, i) => { inv[i] = v; });
     this.inventory = inv;
     const eq = {};
     for (const slot of EQUIP_SLOTS) eq[slot] = null;

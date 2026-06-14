@@ -11,6 +11,8 @@ const Sprites = {
     thief: 'sprites/player/hero-thief.png',
     pirate: 'sprites/player/hero-pirate.png',
   },
+  // 爬繩索專屬立繪（缺檔自動沿用一般立繪）：hero-<job>-climb.png
+  PLAYER_CLIMB_ASSETS: {},
   MONSTER_ASSETS: {
     snail: 'mob_blue_snail.png',
     slime: 'mob_bubbling.png',
@@ -180,9 +182,16 @@ const Sprites = {
   },
 
   _drawPlayerAsset(ctx, p, t) {
-    const jobFile = this.PLAYER_ASSETS[p.job] || ('sprites/player/hero-' + p.job + '.png');
-    let img = this._loadImage(this.ASSET_BASE + jobFile);
-    if (!this._readyImage(img)) img = this._loadImage(this.ASSET_BASE + this.PLAYER_ASSET);
+    let img = null;
+    if (p.climbing) {
+      const cf = this.PLAYER_CLIMB_ASSETS[p.job] || ('sprites/player/hero-' + p.job + '-climb.png');
+      img = this._loadImage(this.ASSET_BASE + cf);
+    }
+    if (!this._readyImage(img)) {
+      const jobFile = this.PLAYER_ASSETS[p.job] || ('sprites/player/hero-' + p.job + '.png');
+      img = this._loadImage(this.ASSET_BASE + jobFile);
+      if (!this._readyImage(img)) img = this._loadImage(this.ASSET_BASE + this.PLAYER_ASSET);
+    }
     if (!this._readyImage(img)) return false;
 
     const attacking = p.attackAnim > 0;
@@ -1410,6 +1419,150 @@ const Sprites = {
       ctx.arc(px, py, 3, 0, Math.PI * 2);
       ctx.fill();
     }
+  },
+
+  // ══════════════════ 寵物 ══════════════════
+  // PNG 優先：assets/sprites/pet/pet-<type>.png；缺檔用程序化小精靈
+  drawPet(ctx, pet, t) {
+    ctx.save();
+    ctx.translate(pet.x, pet.y);
+    ctx.fillStyle = 'rgba(22,30,22,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(0, -1, 12, 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const bob = Math.sin(t * 4 + pet.animT) * 2;
+    const lunge = pet.attackAnim > 0 ? (1 - pet.attackAnim / 0.3) : 0;
+    ctx.translate(pet.facing * lunge * 7, bob);
+    ctx.scale(pet.facing, 1);
+
+    const img = this._loadImage(this.ASSET_BASE + 'sprites/pet/pet-' + pet.type + '.png');
+    if (this._readyImage(img)) {
+      const h = 46, w = h * img.naturalWidth / img.naturalHeight;
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(img, -w / 2, -h, w, h);
+      ctx.restore();
+      return;
+    }
+    // 程序化：圓滾橘色小精靈 + 小翅膀 + 大眼
+    const cy = -16;
+    // 翅膀
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.ellipse(-10, cy - 2, 7, 4, -0.5 + Math.sin(t * 16) * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    // 身體
+    const g = ctx.createRadialGradient(-4, cy - 4, 2, 0, cy, 16);
+    g.addColorStop(0, '#ffd27a');
+    g.addColorStop(1, '#f08a2e');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, cy, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(120,60,20,0.6)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    // 耳朵
+    ctx.fillStyle = '#f08a2e';
+    for (const ex of [-7, 7]) {
+      ctx.beginPath();
+      ctx.moveTo(ex - 3, cy - 11);
+      ctx.lineTo(ex, cy - 20);
+      ctx.lineTo(ex + 3, cy - 11);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // 肚子
+    ctx.fillStyle = 'rgba(255,247,224,0.95)';
+    ctx.beginPath();
+    ctx.ellipse(0, cy + 4, 8, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // 大眼
+    this._mobEye(ctx, -4.5, cy - 2, 3, '#3a2a1a', 0);
+    this._mobEye(ctx, 4.5, cy - 2, 3, '#3a2a1a', 0);
+    // 嘴
+    ctx.strokeStyle = 'rgba(120,60,20,0.8)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(0, cy + 3, 2.4, 0.2, Math.PI - 0.2);
+    ctx.stroke();
+    this._cheek(ctx, -8, cy + 1, 2.2);
+    this._cheek(ctx, 8, cy + 1, 2.2);
+    ctx.restore();
+  },
+
+  // ══════════════════ 商人 NPC ══════════════════
+  // PNG 優先：assets/sprites/npc/npc-merchant.png；缺檔用程序化商人
+  drawNpc(ctx, npc, t) {
+    ctx.save();
+    ctx.translate(npc.x, npc.y);
+    ctx.fillStyle = 'rgba(22,30,22,0.24)';
+    ctx.beginPath();
+    ctx.ellipse(0, -1, 15, 4.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const img = this._loadImage(this.ASSET_BASE + 'sprites/npc/npc-merchant.png');
+    if (this._readyImage(img)) {
+      const h = 74, w = h * img.naturalWidth / img.naturalHeight;
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(img, -w / 2, -h, w, h);
+    } else {
+      // 程序化矮胖商人：袍子 + 圍裙 + 帽子 + 笑臉
+      ctx.fillStyle = '#5a3a8a';
+      ctx.beginPath();
+      ctx.moveTo(-13, -2);
+      ctx.quadraticCurveTo(-16, -34, -8, -46);
+      ctx.lineTo(8, -46);
+      ctx.quadraticCurveTo(16, -34, 13, -2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#c8a85a';
+      ctx.fillRect(-9, -30, 18, 20);
+      ctx.fillStyle = '#3a2450';
+      ctx.fillRect(-13, -6, 26, 5);
+      // 頭
+      ctx.fillStyle = '#ffe2c4';
+      ctx.beginPath();
+      ctx.arc(0, -54, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(80,50,40,0.6)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // 帽
+      ctx.fillStyle = '#8a2f2f';
+      ctx.beginPath();
+      ctx.ellipse(0, -62, 13, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-9, -62);
+      ctx.quadraticCurveTo(0, -78, 9, -62);
+      ctx.closePath();
+      ctx.fill();
+      // 眼 + 鬍子笑臉
+      ctx.fillStyle = '#2c1a10';
+      ctx.beginPath(); ctx.arc(-3.5, -55, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(3.5, -55, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#9a6a4a';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(0, -50, 4, 0.2, Math.PI - 0.2); ctx.stroke();
+    }
+
+    // 頭上「商店」氣泡 + 上箭頭提示
+    const yb = Math.sin(t * 3) * 3;
+    ctx.translate(0, -86 + yb);
+    ctx.font = '11px "Microsoft JhengHei", sans-serif';
+    ctx.textAlign = 'center';
+    const label = '↑ 商店';
+    const lw = ctx.measureText(label).width + 16;
+    ctx.fillStyle = 'rgba(16,14,30,0.78)';
+    Utils.rr(ctx, -lw / 2, -2, lw, 17, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(240,199,94,0.7)';
+    ctx.lineWidth = 1;
+    Utils.rr(ctx, -lw / 2, -2, lw, 17, 8);
+    ctx.stroke();
+    ctx.fillStyle = '#ffe9b0';
+    ctx.fillText(label, 0, 10.5);
+    ctx.restore();
   },
 
   // ══════════════════ 道具圖示 ══════════════════

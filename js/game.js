@@ -17,6 +17,7 @@ const Game = {
     const save = this.loadSave();
     this.hasSave = !!save;
     this.player = new Player(save ? save.player : null);
+    this.pet = new Pet('default');   // 一開始就給一隻寵物
     if (save && MapDB[save.mapId]) {
       this.loadMap(save.mapId, null, { x: save.x, y: save.y });
     } else {
@@ -91,6 +92,7 @@ const Game = {
     p.climbing = null;
     p.onGround = false;
     p.plat = null;
+    if (this.pet) this.pet.reset(p);
 
     Effects.announce(`🍁 ${this.map.name}`, '#ffe082');
     if (id === 'altar') Effects.announce('⚠ 這裡是蘑菇王的領域！', '#ff8a65');
@@ -243,6 +245,8 @@ const Game = {
     for (const m of this.monsters) m.update(dt, this);
     this.monsters = this.monsters.filter((m) => !m.dead);
 
+    if (this.pet) this.pet.update(dt, this);
+
     // 接觸傷害
     if (!p.dead && p.invinc <= 0) {
       const pr = p.rect();
@@ -316,9 +320,11 @@ const Game = {
     Renderer.drawBackground(ctx, this.map, Camera, t);
     Camera.begin(ctx);
     Renderer.drawMapGeometry(ctx, this.map, t);
+    if (this.map.npc) Sprites.drawNpc(ctx, this.map.npc, t);
     for (const d of this.drops) d.draw(ctx, t);
     for (const m of this.monsters) Sprites.drawMonster(ctx, m, t);
     for (const pj of this.projectiles) pj.draw(ctx, t);
+    if (this.pet && this.state !== 'dead') this.pet.draw(ctx, t);
     if (this.state !== 'dead') this.player.draw(ctx, t);
     Effects.drawWorld(ctx);
     Camera.end(ctx);
