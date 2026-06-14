@@ -7,6 +7,11 @@ const UI = {
   shopTab: 'buy',
   sellSel: null,    // 賣出數量選擇：{ slot, qty }
   confirmSell: false, // 賣出最終確認視窗
+  buySel: null,     // 購買消耗品數量選擇：{ i, qty }
+  confirmBuy: -1,   // 購買武器確認視窗（_curBuy 的索引；-1=無）
+  buyScroll: 0,     // 購買清單捲動位移
+  sellScroll: 0,    // 賣出清單捲動位移
+  shopId: 'merchant', // 目前商店（決定販售清單）
   dlgNpc: null,     // 對話中的 NPC id
   winPos: {},       // 視窗拖曳後的位置覆寫：{ inv:{x,y}, shop:{x,y}, ... }
   drag: null,       // 拖曳中：{ win, dx, dy }
@@ -17,28 +22,40 @@ const UI = {
   slotDelRects: null,
   INV_TABS: [['all', '全部'], ['use', '消耗'], ['equip', '裝備'], ['material', '材料']],
   SHOP_TABS: [['buy', '購買'], ['sell', '賣出'], ['expand', '背包格']],
-  // 消耗品固定販售清單（裝備不在商店賣，但提供各職業「基礎武器」見 _buyList）
-  baseBuy: [
-    { id: 'redPotion', price: 30 }, { id: 'orangePotion', price: 90 },
-    { id: 'whitePotion', price: 300 }, { id: 'bluePotion', price: 40 },
-    { id: 'manaElixir', price: 200 }, { id: 'elixir', price: 400 },
-    { id: 'powerElixir', price: 1200 }, { id: 'returnScroll', price: 150 },
+  SHOP_NAMES: { merchant: '🛒 雜貨商人', potion: '🧪 藥水商店', equip: '⚔ 裝備商店', pet: '🐾 寵物商店' },
+  // 各店家販售清單（id -> 售價）。裝備售價偏高、消耗品固定價。
+  POTIONS: [
+    ['redPotion', 30], ['orangePotion', 90], ['whitePotion', 300],
+    ['bluePotion', 40], ['manaElixir', 200], ['elixir', 400],
+    ['powerElixir', 1200], ['returnScroll', 150],
   ],
-  // 各職業可在商店購買的「基礎武器」（讓非劍士也買得到趁手兵器；價格依攻擊力訂）
-  jobWeapons: {
+  // 各職業基礎武器（一般雜貨店也少量供應，價格依攻擊力）
+  JOB_WEAPONS: {
     warrior:  [['woodSword', 80], ['ironSword', 360]],
     magician: [['beginnerWand', 80], ['mapleWand', 360]],
     archer:   [['beginnerBow', 80], ['hunterBow', 360]],
     thief:    [['beginnerDagger', 80], ['steelDagger', 360]],
     pirate:   [['beginnerKnuckle', 80], ['ironKnuckle', 360]],
   },
+  // 裝備店：各職基礎/中階武器 + 基礎防具（售價用參考價）
+  EQUIP_STOCK: [
+    'woodSword', 'ironSword', 'beginnerWand', 'mapleWand', 'beginnerBow', 'hunterBow',
+    'beginnerDagger', 'steelDagger', 'beginnerKnuckle', 'ironKnuckle',
+    'leafHat', 'travelTop', 'clothPants', 'strawShoes', 'clothGloves', 'woodShield', 'travelCape',
+    'ironHelm', 'ironArmor', 'ironGreaves', 'leatherBoots', 'battleGloves', 'ironShield', 'leatherBelt',
+  ],
+  PET_STOCK: [['petPig', 1500], ['petFox', 4000]],
 
-  // 依玩家職業組出完整購買清單（消耗品 + 該職業基礎武器）
+  // 依目前店家（this.shopId）組出購買清單 [{id, price}]
   _buyList() {
     const p = (typeof Game !== 'undefined' && Game.player) ? Game.player : null;
     const job = p ? p.job : 'warrior';
-    const weps = (this.jobWeapons[job] || []).map((w) => ({ id: w[0], price: w[1] }));
-    return this.baseBuy.concat(weps);
+    const toObj = (arr) => arr.map((w) => ({ id: w[0], price: w[1] }));
+    if (this.shopId === 'potion') return toObj(this.POTIONS);
+    if (this.shopId === 'pet') return toObj(this.PET_STOCK);
+    if (this.shopId === 'equip') return this.EQUIP_STOCK.map((id) => ({ id, price: Math.round(this._valueOf(id) * 1.25) }));
+    // 一般雜貨店：消耗品 + 該職業基礎武器
+    return toObj(this.POTIONS).concat(toObj(this.JOB_WEAPONS[job] || []));
   },
 
   closeAll() {
@@ -55,10 +72,16 @@ const UI = {
            Input.mouseY >= r.y && Input.mouseY <= r.y + r.h;
   },
 
-  openShop() { this.show.shop = true; this.shopTab = 'buy'; this.sellSel = null; Sound.play('portal'); },
+  openShop(shopId) {
+    this.show.shop = true; this.shopTab = 'buy';
+    this.shopId = shopId || 'merchant';
+    this.sellSel = null; this.confirmSell = false; this.buySel = null; this.confirmBuy = -1;
+    this.buyScroll = 0; this.sellScroll = 0;
+    Sound.play('portal');
+  },
   openNpc(n) {
     const def = (typeof NpcDB !== 'undefined' && NpcDB[n.id]) || { type: 'shop' };
-    if (def.type === 'shop') this.openShop();
+    if (def.type === 'shop') this.openShop(def.shop || 'merchant');
     else if (def.type === 'craft') { this.show.craft = true; Sound.play('portal'); }
     else { this.show.dialogue = true; this.dlgNpc = n.id; Sound.play('portal'); }
   },
@@ -79,10 +102,11 @@ const UI = {
   _valueOf(id) {
     const d = ItemDB[id];
     if (!d) return 10;
-    const bl = this._buyList().find((b) => b.id === id);
-    if (bl) return bl.price;
+    const pot = this.POTIONS.find((b) => b[0] === id);  // 固定價表（避免與 _buyList 互相遞迴）
+    if (pot) return pot[1];
     if (d.type === 'use') return Math.max(10, Math.round(((d.heal || 0) + (d.mpHeal || 0)) / 6));
     if (d.type === 'material') return 25;
+    if (d.type === 'pet') return 1500;
     return Math.round(((d.atk || 0) + (d.def || 0)) * 8 + (d.hp || 0) * 0.4 + (d.mp || 0) * 0.4 + (d.reqLv || 1) * 18 + 40);
   },
   _sellOf(id) { return Math.max(1, Math.floor(this._valueOf(id) * 0.6)); },
@@ -195,18 +219,55 @@ const UI = {
       });
       R.shopRows = [];
       const top = r.y + 72;
+      const viewH = r.h - 116;                       // 清單可視高度（留底部楓幣列）
+      R.shopView = { x: r.x + 8, y: top, w: r.w - 16, h: viewH };
       const p = (typeof Game !== 'undefined' && Game.player) ? Game.player : null;
       this._curBuy = this._buyList();
       if (this.shopTab === 'buy') {
-        this._curBuy.forEach((b, i) => R.shopRows.push({ kind: 'buy', i, x: r.x + 12, y: top + i * 40, w: r.w - 24, h: 36 }));
-      } else if (this.shopTab === 'sell' && p) {
-        let n = 0;
-        for (let i = 0; i < p.invSize; i++) {
-          if (!p.inventory[i]) continue;
-          const col = n % 6, row = Math.floor(n / 6);
-          R.shopRows.push({ kind: 'sell', slot: i, x: r.x + 18 + col * 61, y: top + row * 58, w: 50, h: 50 });
-          n++;
+        const rowH = 42;
+        const contentH = this._curBuy.length * rowH;
+        const maxScroll = Math.max(0, contentH - viewH);
+        this.buyScroll = Utils.clamp(this.buyScroll, 0, maxScroll);
+        const sbW = maxScroll > 0 ? 12 : 0;
+        this._curBuy.forEach((b, i) => R.shopRows.push({ kind: 'buy', i, x: r.x + 12, y: top - this.buyScroll + i * rowH, w: r.w - 24 - sbW, h: rowH - 6 }));
+        if (maxScroll > 0) R.shopScroll = { x: r.x + r.w - 16, y: top, w: 8, h: viewH, contentH, scroll: this.buyScroll, maxScroll };
+        // 購買數量彈窗（消耗品）
+        if (this.buySel) {
+          const pop = { x: r.x + 36, y: r.y + 150, w: r.w - 72, h: 168 };
+          R.buyPop = pop;
+          const by = pop.y + 70, bw = 36, bh = 30, cx = pop.x + pop.w / 2;
+          R.buyMinus10 = { x: cx - 118, y: by, w: bw, h: bh };
+          R.buyMinus = { x: cx - 74, y: by, w: bw, h: bh };
+          R.buyPlus = { x: cx + 38, y: by, w: bw, h: bh };
+          R.buyPlus10 = { x: cx + 82, y: by, w: bw, h: bh };
+          const ry = pop.y + pop.h - 40, bw3 = (pop.w - 40) / 3;
+          R.buyAll = { x: pop.x + 12, y: ry, w: bw3, h: 30 };
+          R.buyOk = { x: pop.x + 20 + bw3, y: ry, w: bw3, h: 30 };
+          R.buyCancel = { x: pop.x + 28 + 2 * bw3, y: ry, w: bw3, h: 30 };
         }
+        // 購買確認視窗（裝備 / 寵物）
+        if (this.confirmBuy >= 0) {
+          const cw = 290, ch = 150, cwx = r.x + (r.w - cw) / 2, cwy = r.y + (r.h - ch) / 2;
+          R.buyConfirmWin = { x: cwx, y: cwy, w: cw, h: ch };
+          const yw = (cw - 50) / 2;
+          R.buyYes = { x: cwx + 20, y: cwy + ch - 44, w: yw, h: 32 };
+          R.buyNo = { x: cwx + 30 + yw, y: cwy + ch - 44, w: yw, h: 32 };
+        }
+      } else if (this.shopTab === 'sell' && p) {
+        const rowH = 58;
+        let n = 0;
+        const slots = [];
+        for (let i = 0; i < p.invSize; i++) { if (p.inventory[i]) slots.push(i); }
+        const rows = Math.ceil(slots.length / 6);
+        const contentH = rows * rowH;
+        const maxScroll = Math.max(0, contentH - viewH);
+        this.sellScroll = Utils.clamp(this.sellScroll, 0, maxScroll);
+        slots.forEach((i) => {
+          const col = n % 6, row = Math.floor(n / 6);
+          R.shopRows.push({ kind: 'sell', slot: i, x: r.x + 18 + col * 61, y: top - this.sellScroll + row * rowH, w: 50, h: 50 });
+          n++;
+        });
+        if (maxScroll > 0) R.shopScroll = { x: r.x + r.w - 16, y: top, w: 8, h: viewH, contentH, scroll: this.sellScroll, maxScroll };
         // 數量選擇彈窗
         if (this.sellSel) {
           const pop = { x: r.x + 36, y: r.y + 150, w: r.w - 72, h: 168 };
@@ -328,6 +389,12 @@ const UI = {
       }
     }
 
+    // 滾輪捲動商店清單
+    if (Input.wheel && this.show.shop && this.R.shopView && this.inRect(this.R.shopView)) {
+      if (this.shopTab === 'buy') this.buyScroll += Input.wheel;
+      else if (this.shopTab === 'sell') this.sellScroll += Input.wheel;
+    }
+
     // ── 視窗拖曳 ──
     if (this.drag) {
       if (Input.mouseDown) this.winPos[this.drag.win] = { x: Input.mouseX - this.drag.dx, y: Input.mouseY - this.drag.dy };
@@ -396,19 +463,61 @@ const UI = {
         if (this.inRect(R.sellCancel)) { this.sellSel = null; Sound.play('error'); return; }
         return; // modal：吞掉其他點擊
       }
-      for (const tb of R.shopTabs) { if (this.inRect(tb)) { this.shopTab = tb.key; this.sellSel = null; this.confirmSell = false; Sound.play('equip'); return; } }
+      // 購買數量彈窗（消耗品，modal）
+      if (this.shopTab === 'buy' && this.buySel) {
+        const b = this._curBuy[this.buySel.i];
+        const maxAfford = b ? Math.max(1, Math.floor(p.meso / b.price)) : 1;
+        const cap = (ItemDB[b.id] && ItemDB[b.id].maxStack) || 100;
+        const maxq = Math.min(maxAfford, cap);
+        this.buySel.qty = Utils.clamp(this.buySel.qty, 1, maxq);
+        if (this.inRect(R.buyMinus10)) { this.buySel.qty = Math.max(1, this.buySel.qty - 10); return; }
+        if (this.inRect(R.buyMinus)) { this.buySel.qty = Math.max(1, this.buySel.qty - 1); return; }
+        if (this.inRect(R.buyPlus)) { this.buySel.qty = Math.min(maxq, this.buySel.qty + 1); return; }
+        if (this.inRect(R.buyPlus10)) { this.buySel.qty = Math.min(maxq, this.buySel.qty + 10); return; }
+        if (this.inRect(R.buyAll)) { this.buySel.qty = maxq; return; }
+        if (this.inRect(R.buyOk)) {
+          const n = Math.min(this.buySel.qty, maxq);
+          const cost = b.price * n;
+          if (p.meso < cost) { Effects.announce('楓幣不足', '#ef9a9a'); Sound.play('error'); }
+          else if (!p.addItem(b.id, n)) { Effects.announce('背包空間不足', '#ef9a9a'); Sound.play('error'); }
+          else { p.meso -= cost; Sound.play('meso'); Effects.announce(`購買 ${ItemDB[b.id].name} x${n}`, '#a5d6a7'); this.buySel = null; }
+          return;
+        }
+        if (this.inRect(R.buyCancel)) { this.buySel = null; Sound.play('error'); return; }
+        return;
+      }
+      // 購買確認視窗（裝備/寵物，modal）
+      if (this.shopTab === 'buy' && this.confirmBuy >= 0) {
+        const b = this._curBuy[this.confirmBuy];
+        if (this.inRect(R.buyYes)) {
+          if (!b) { this.confirmBuy = -1; return; }
+          if (p.meso < b.price) { Effects.announce('楓幣不足', '#ef9a9a'); Sound.play('error'); }
+          else if (!p.addItem(b.id, 1)) { Effects.announce('背包已滿', '#ef9a9a'); Sound.play('error'); }
+          else { p.meso -= b.price; Sound.play('meso'); Effects.announce(`購買 ${ItemDB[b.id].name}`, '#a5d6a7'); }
+          this.confirmBuy = -1;
+          return;
+        }
+        if (this.inRect(R.buyNo)) { this.confirmBuy = -1; Sound.play('error'); return; }
+        return;
+      }
+      for (const tb of R.shopTabs) { if (this.inRect(tb)) { this.shopTab = tb.key; this.sellSel = null; this.confirmSell = false; this.buySel = null; this.confirmBuy = -1; Sound.play('equip'); return; } }
       if (this.shopTab === 'buy') {
+        const view = R.shopView;
         for (const row of R.shopRows) {
+          if (row.y < view.y - 2 || row.y + row.h > view.y + view.h + 2) continue; // 捲出可視區不可點
           if (this.inRect(row)) {
             const b = this._curBuy[row.i];
-            if (p.meso < b.price) { Effects.announce('楓幣不足', '#ef9a9a'); Sound.play('error'); }
-            else if (!p.addItem(b.id, 1)) { Effects.announce('背包已滿', '#ef9a9a'); Sound.play('error'); }
-            else { p.meso -= b.price; Sound.play('meso'); }
+            const d = ItemDB[b.id];
+            if (d && (d.type === 'equip' || d.type === 'pet')) this.confirmBuy = row.i;  // 裝備/寵物 → 確認視窗
+            else this.buySel = { i: row.i, qty: 1 };                                      // 消耗品 → 數量彈窗
+            Sound.play('equip');
             return;
           }
         }
       } else if (this.shopTab === 'sell') {
+        const view = R.shopView;
         for (const row of R.shopRows) {
+          if (row.y < view.y - 2 || row.y + row.h > view.y + view.h + 2) continue;
           if (this.inRect(row) && p.inventory[row.slot]) {
             this.sellSel = { slot: row.slot, qty: 1 };  // 開啟數量選擇
             this.confirmSell = false;
@@ -868,13 +977,96 @@ const UI = {
     }
   },
 
+  _drawBuyPopup(ctx, p) {
+    const b = this._curBuy[this.buySel.i];
+    if (!b) { this.buySel = null; return; }
+    const d = ItemDB[b.id];
+    const pop = this.R.buyPop;
+    const maxq = Math.min(Math.max(1, Math.floor(p.meso / b.price)), (d && d.maxStack) || 100);
+    const qty = Utils.clamp(this.buySel.qty, 1, maxq);
+    const sh = this.R.shop;
+    ctx.fillStyle = 'rgba(6,8,18,0.6)';
+    ctx.fillRect(sh.x + 3, sh.y + 60, sh.w - 6, sh.h - 64);
+    this.panel(ctx, pop.x, pop.y, pop.w, pop.h, 10);
+    Sprites.drawItemIcon(ctx, b.id, pop.x + 32, pop.y + 32, 34);
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 14px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#ffeec2';
+    ctx.fillText(d ? d.name : b.id, pop.x + 56, pop.y + 28);
+    ctx.font = '11px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#94a8c8';
+    ctx.fillText(`單價 ${Utils.fmt(b.price)} 楓幣　可買 ${maxq}`, pop.x + 56, pop.y + 46);
+    this._btn(ctx, this.R.buyMinus10, '-10', qty > 1);
+    this._btn(ctx, this.R.buyMinus, '-1', qty > 1);
+    this._btn(ctx, this.R.buyPlus, '+1', qty < maxq);
+    this._btn(ctx, this.R.buyPlus10, '+10', qty < maxq);
+    const cx = pop.x + pop.w / 2;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 22px Verdana';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(qty, cx, this.R.buyMinus.y + 22);
+    ctx.font = '12px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#ffd87a';
+    ctx.fillText(`總價 ${Utils.fmt(b.price * qty)} 楓幣`, cx, pop.y + pop.h - 50);
+    this._btn(ctx, this.R.buyAll, '最多', true, 'blue');
+    this._btn(ctx, this.R.buyOk, '購買', true, 'green');
+    this._btn(ctx, this.R.buyCancel, '取消', true, 'red');
+  },
+
+  _drawBuyConfirm(ctx, p) {
+    const b = this._curBuy[this.confirmBuy];
+    if (!b) { this.confirmBuy = -1; return; }
+    const d = ItemDB[b.id];
+    const sh = this.R.shop;
+    ctx.fillStyle = 'rgba(6,8,18,0.6)';
+    ctx.fillRect(sh.x + 3, sh.y + 60, sh.w - 6, sh.h - 64);
+    const w = this.R.buyConfirmWin;
+    this.panel(ctx, w.x, w.y, w.w, w.h, 10);
+    Sprites.drawItemIcon(ctx, b.id, w.x + 38, w.y + 40, 40);
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 15px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#ffeec2';
+    ctx.fillText(d ? d.name : b.id, w.x + 66, w.y + 34);
+    ctx.font = '11px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#a8bcd8';
+    if (d && d.type === 'equip') {
+      const parts = [];
+      if (d.atk) parts.push('攻+' + d.atk);
+      if (d.def) parts.push('防+' + d.def);
+      if (d.hp) parts.push('HP+' + d.hp);
+      if (d.mp) parts.push('MP+' + d.mp);
+      ctx.fillText(parts.join('  ') + `　需求Lv.${d.reqLv || 1}`, w.x + 66, w.y + 52);
+    } else if (d) {
+      ctx.fillText(d.desc || '', w.x + 66, w.y + 52);
+    }
+    ctx.fillStyle = '#ffd87a';
+    ctx.font = 'bold 13px "Microsoft JhengHei", sans-serif';
+    ctx.fillText(`售價 ${Utils.fmt(b.price)} 楓幣　確定購買？`, w.x + 20, w.y + 86);
+    this._btn(ctx, this.R.buyYes, '確定購買', p.meso >= b.price, 'green');
+    this._btn(ctx, this.R.buyNo, '取消', true, 'red');
+  },
+
+  _scrollbar(ctx, sb) {
+    if (!sb) return;
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    Utils.rr(ctx, sb.x, sb.y, sb.w, sb.h, sb.w / 2); ctx.fill();
+    const thumbH = Math.max(24, sb.h * (sb.h / sb.contentH));
+    const ty = sb.y + (sb.h - thumbH) * (sb.scroll / sb.maxScroll);
+    ctx.fillStyle = 'rgba(216,178,94,0.7)';
+    Utils.rr(ctx, sb.x, ty, sb.w, thumbH, sb.w / 2); ctx.fill();
+  },
+
   drawShop(ctx, p) {
     const r = this.R.shop;
-    this.chrome(ctx, r, '🛒 雜貨商人', this.R.shopClose);
+    this.chrome(ctx, r, this.SHOP_NAMES[this.shopId] || '🛒 商店', this.R.shopClose);
     for (const tb of this.R.shopTabs) this._tabBtn(ctx, tb, this.shopTab === tb.key);
+    const view = this.R.shopView;
 
     if (this.shopTab === 'buy') {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(view.x, view.y, view.w, view.h); ctx.clip();
       for (const row of this.R.shopRows) {
+        if (row.y + row.h < view.y || row.y > view.y + view.h) continue;
         const b = this._curBuy[row.i];
         const d = ItemDB[b.id];
         const hover = this.inRect(row);
@@ -886,19 +1078,23 @@ const UI = {
         ctx.lineWidth = 1;
         Utils.rr(ctx, row.x, row.y, row.w, row.h, 7);
         ctx.stroke();
-        Sprites.drawItemIcon(ctx, b.id, row.x + 24, row.y + 19, 30);
+        Sprites.drawItemIcon(ctx, b.id, row.x + 24, row.y + 18, 30);
         ctx.textAlign = 'left';
         ctx.font = 'bold 13px "Microsoft JhengHei", sans-serif';
         ctx.fillStyle = '#ffeec2';
-        ctx.fillText(d ? d.name : b.id, row.x + 46, row.y + 17);
+        ctx.fillText(d ? d.name : b.id, row.x + 46, row.y + 16);
         ctx.font = '10px "Microsoft JhengHei", sans-serif';
         ctx.fillStyle = '#a8bcd8';
-        ctx.fillText(d && d.desc ? d.desc : '', row.x + 46, row.y + 31);
+        ctx.fillText(d && d.desc ? d.desc : (d && d.type === 'equip' ? EQUIP_SLOT_NAMES[d.slot] + '裝備' : ''), row.x + 46, row.y + 30);
         ctx.textAlign = 'right';
         ctx.font = 'bold 13px Verdana';
         ctx.fillStyle = afford ? '#ffd87a' : '#ef9a9a';
-        ctx.fillText(`${Utils.fmt(b.price)} 楓幣`, row.x + row.w - 14, row.y + 24);
+        ctx.fillText(`${Utils.fmt(b.price)} 楓幣`, row.x + row.w - 14, row.y + 23);
       }
+      ctx.restore();
+      this._scrollbar(ctx, this.R.shopScroll);
+      if (this.buySel && this.R.buyPop) this._drawBuyPopup(ctx, p);
+      if (this.confirmBuy >= 0 && this.R.buyConfirmWin) this._drawBuyConfirm(ctx, p);
     } else if (this.shopTab === 'sell') {
       if (!this.R.shopRows.length) {
         ctx.textAlign = 'center';
@@ -906,10 +1102,14 @@ const UI = {
         ctx.fillStyle = '#94a8c8';
         ctx.fillText('背包沒有可賣出的物品', r.x + r.w / 2, r.y + 150);
       }
+      ctx.save();
+      ctx.beginPath(); ctx.rect(view.x, view.y, view.w, view.h); ctx.clip();
       for (const row of this.R.shopRows) {
+        if (row.y + row.h < view.y || row.y > view.y + view.h) continue;
         const it = p.inventory[row.slot];
         if (!it) continue;
         this._slot(ctx, row, this.inRect(row));
+        if (it.roll && it.roll.tier > 0) this._tierBorder(ctx, row, it.roll.tier);
         Sprites.drawItemIcon(ctx, it.id, row.x + 25, row.y + 22, 38);
         if (it.qty > 1) {
           ctx.font = 'bold 10px Verdana';
@@ -925,6 +1125,8 @@ const UI = {
         ctx.fillStyle = '#ffd87a';
         ctx.fillText(this._sellOf(it.id), row.x + row.w / 2, row.y + row.h - 3);
       }
+      ctx.restore();
+      this._scrollbar(ctx, this.R.shopScroll);
       ctx.textAlign = 'center';
       ctx.font = '10px "Microsoft JhengHei", sans-serif';
       ctx.fillStyle = '#8fa3bd';

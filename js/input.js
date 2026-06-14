@@ -8,6 +8,7 @@ const Input = {
   rightClicked: false, // 這一幀剛按下右鍵
   mouseDown: false,    // 左鍵是否持續按住（拖曳用）
   released: false,     // 這一幀剛放開左鍵
+  wheel: 0,            // 這一幀的滾輪位移（>0 向下）
 
   _prevented: new Set([
     'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space',
@@ -44,6 +45,7 @@ const Input = {
       if (e.button !== 2) { this.mouseDown = false; this.released = true; }
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('wheel', (e) => { this.wheel += e.deltaY; e.preventDefault(); }, { passive: false });
   },
 
   endFrame() {
@@ -51,5 +53,6 @@ const Input = {
     this.clicked = false;
     this.rightClicked = false;
     this.released = false;
+    this.wheel = 0;
   },
 };

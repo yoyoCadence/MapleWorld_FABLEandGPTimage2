@@ -226,9 +226,12 @@ for (const id in MapDB) {
 if (MapDB.town) {
   const gy = (MapDB.town.platforms.find((p) => p.ground) || { y: 560 }).y;
   MapDB.town.npcs.push(
-    { id: 'elder', x: 600, y: gy },
-    { id: 'hunter', x: 820, y: gy },
-    { id: 'herbalist', x: 1040, y: gy },
-    { id: 'blacksmith', x: 1300, y: gy },
+    { id: 'elder', x: 560, y: gy },
+    { id: 'hunter', x: 720, y: gy },
+    { id: 'herbalist', x: 880, y: gy },
+    { id: 'blacksmith', x: 1040, y: gy },
+    { id: 'equipMerchant', x: 1220, y: gy },
+    { id: 'potionMerchant', x: 1380, y: gy },
+    { id: 'petMerchant', x: 1540, y: gy },
   );
 }

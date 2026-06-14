@@ -2,8 +2,14 @@
 // ── NPC ──
 // type: 'shop' 商店 / 'craft' 製作 / 'quest' 對話與任務
 const NpcDB = {
-  merchant:  { name: '雜貨商人 阿金', type: 'shop',  sprite: 'npc-merchant',  color: '#c8a85a',
+  merchant:  { name: '雜貨商人 阿金', type: 'shop', shop: 'merchant', sprite: 'npc-merchant', color: '#c8a85a',
     story: '「來來來，藥水卷軸樣樣有，背包不夠大也能擴充喔！」' },
+  potionMerchant: { name: '藥師 小婷', type: 'shop', shop: 'potion', sprite: 'npc-herbalist', color: '#7fd0a0',
+    story: '「各式恢復藥水，補給就找我！」' },
+  equipMerchant:  { name: '武具商 老鐵', type: 'shop', shop: 'equip', sprite: 'npc-blacksmith', color: '#9aa0a6',
+    story: '「武器防具一應俱全，各職業都有貨。」' },
+  petMerchant:    { name: '寵物商人 露露', type: 'shop', shop: 'pet', sprite: 'npc-merchant', color: '#f6a5c0',
+    story: '「想找個伴一起冒險嗎？這些小傢伙會幫你打怪喔！」' },
   blacksmith:{ name: '鐵匠 鋼爺',    type: 'craft', sprite: 'npc-blacksmith', color: '#8a5a3a',
     story: '「帶素材來，老夫幫你打造像樣的裝備。」' },
   elder:     { name: '村長 楓伯',    type: 'quest', sprite: 'npc-elder',     color: '#7a5cff',

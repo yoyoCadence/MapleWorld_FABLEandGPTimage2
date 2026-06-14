@@ -472,6 +472,17 @@ class Player {
       Effects.spawnText(this.x, this.y - 70, '材料：製作用', '#90a4ae');
       return;
     }
+    if (d.type === 'pet') {
+      if (game && typeof Pet !== 'undefined') {
+        game.pet = new Pet(d.petKind || 'default');
+        game.pet.reset(this);
+        Effects.announce(`🐾 ${d.name} 加入隊伍！`, '#ffe082');
+        Sound.play('equip');
+      }
+      s.qty--;
+      if (s.qty <= 0) this.inventory[i] = null;
+      return;
+    }
     if (d.type === 'use') {
       if (d.heal) {
         this.hp = Math.min(this.maxHp, this.hp + Math.min(d.heal, this.maxHp));

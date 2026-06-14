@@ -397,7 +397,7 @@ try {
   UI.show.dialogue = true; UI.dlgNpc = 'hunter'; UI.layout(); Game.draw(ctxStub_); UI.show.dialogue = false; UI.dlgNpc = null;
 } catch (e) { npcDrawOk = false; console.error(e); }
 check('製作/對話視窗繪製不報錯', npcDrawOk);
-check('全部 NPC 數量正確', MapDB.town.npcs.length === 5);
+check('全部 NPC 數量正確（含商店）', MapDB.town.npcs.length === 8);
 
 // 19. 裝備隨機數值（roll / tier）
 const __rA = rollEquip('ironSword');
@@ -479,6 +479,54 @@ Input.mouseDown = false; Input.clicked = false;
 UI.update(Game, 1 / 60);
 check('視窗可拖曳移動', UI.winPos.inv && Math.abs(UI.winPos.inv.x - (__r0.x + 100)) < 6);
 UI.closeAll();
+
+// 25. 商店：購買數量 / 武器確認 / 各店家清單 / 寵物
+Game.curSlot = 0; Game.state = 'play'; Game.player = new Player(null, 'warrior');
+Game.loadMap('town', null, null);
+const ps = Game.player; ps.meso = 99999;
+for (let i = 0; i < ps.invSize; i++) ps.inventory[i] = null;
+// 一般雜貨店：消耗品 + 劍士基礎武器
+UI.openShop('merchant'); UI.shopTab = 'buy'; UI.layout();
+const __buy = UI._curBuy.map((b) => b.id);
+check('雜貨店含消耗品與職業武器', __buy.includes('redPotion') && __buy.includes('woodSword'));
+// 點消耗品 → 開數量彈窗
+const __potIdx = UI._curBuy.findIndex((b) => b.id === 'redPotion');
+const __row = UI.R.shopRows.find((rw) => rw.i === __potIdx);
+Input.mouseX = __row.x + 5; Input.mouseY = __row.y + 5; Input.clicked = true;
+UI.update(Game, 1 / 60);
+check('購買消耗品開啟數量彈窗', !!UI.buySel && UI.buySel.i === __potIdx);
+UI.layout();
+Input.mouseX = UI.R.buyPlus10.x + 2; Input.mouseY = UI.R.buyPlus10.y + 2; Input.clicked = true;
+UI.update(Game, 1 / 60);
+check('購買數量 +10 生效', UI.buySel.qty === 11);
+const __m0 = ps.meso;
+UI.layout();
+Input.mouseX = UI.R.buyOk.x + 2; Input.mouseY = UI.R.buyOk.y + 2; Input.clicked = true;
+UI.update(Game, 1 / 60);
+check('購買消耗品扣款並入袋', ps.invCount('redPotion') === 11 && ps.meso === __m0 - 30 * 11 && UI.buySel === null);
+// 點武器 → 確認視窗（武器在清單底部，先捲到底）
+UI.shopTab = 'buy'; UI.buyScroll = 99999; UI.layout();
+check('購買清單可捲動', !!UI.R.shopScroll);
+const __wIdx = UI._curBuy.findIndex((b) => b.id === 'woodSword');
+const __wrow = UI.R.shopRows.find((rw) => rw.i === __wIdx);
+Input.mouseX = __wrow.x + 5; Input.mouseY = __wrow.y + 5; Input.clicked = true;
+UI.update(Game, 1 / 60);
+check('購買武器開啟確認視窗', UI.confirmBuy === __wIdx);
+UI.layout();
+Input.mouseX = UI.R.buyYes.x + 2; Input.mouseY = UI.R.buyYes.y + 2; Input.clicked = true;
+UI.update(Game, 1 / 60);
+check('確認後購得武器（含 roll）', ps.invCount('woodSword') === 1 && UI.confirmBuy === -1);
+const __wEntry = ps.inventory.find((s) => s && s.id === 'woodSword');
+check('商店武器有隨機數值', __wEntry && __wEntry.roll);
+// 裝備店 / 藥水店 / 寵物店清單
+UI.openShop('equip'); check('裝備店賣裝備', UI._buyList().some((b) => ItemDB[b.id].type === 'equip'));
+UI.openShop('potion'); check('藥水店只賣消耗品', UI._buyList().every((b) => ItemDB[b.id].type === 'use'));
+UI.openShop('pet'); check('寵物店賣寵物', UI._buyList().every((b) => ItemDB[b.id].type === 'pet'));
+UI.show.shop = false;
+// 使用寵物道具更換寵物
+ps.addItem('petFox'); const __petIdx = ps.inventory.findIndex((s) => s && s.id === 'petFox');
+ps.useSlot(__petIdx, Game);
+check('使用寵物道具更換寵物', Game.pet && Game.pet.type === 'fox' && ps.invCount('petFox') === 0);
 
 console.log(\`\\n煙霧測試結果：\${__pass} 通過，\${__fail} 失敗\`);
 if (__fail > 0) process.exit(1);

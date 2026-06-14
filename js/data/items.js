@@ -118,6 +118,10 @@ const ItemDB = {
   dragonScale:  { name: '龍鱗',     type: 'material', icon: 'material', color: '#e74c3c', desc: '稀有的龍鱗，頂級素材', maxStack: 100 },
   goldOre:      { name: '黃金礦石', type: 'material', icon: 'material', color: '#f1c40f', desc: '閃亮的黃金原礦', maxStack: 100 },
   mapleLeafMat: { name: '楓之葉',   type: 'material', icon: 'material', color: '#e8542f', desc: '蘊含楓之力的葉片', maxStack: 100 },
+
+  // ════════════ 寵物（在寵物商店購買，使用即更換隨行寵物）════════════
+  petPig:  { name: '粉紅小豬', type: 'pet', petKind: 'pig', icon: 'pet', color: '#f6a5c0', desc: '使用後更換為粉紅小豬寵物', maxStack: 1 },
+  petFox:  { name: '九尾小狐', type: 'pet', petKind: 'fox', icon: 'pet', color: '#ff9a4a', desc: '使用後更換為九尾小狐寵物', maxStack: 1 },
 };
 
 const EQUIP_SLOTS = ['weapon', 'hat', 'top', 'bottom', 'shoes', 'gloves', 'cape', 'shield', 'earring', 'ring', 'pendant', 'belt'];
