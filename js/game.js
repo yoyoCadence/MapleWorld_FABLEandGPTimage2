@@ -140,6 +140,7 @@ const Game = {
 
   onMonsterDeath(m) {
     this.player.gainExp(m.def.xp);
+    this.player.onKill(m.type);
     Effects.poof(m.x, m.y - m.h / 2, '#ddd');
     Sound.play('mobdie');
 
@@ -305,6 +306,7 @@ const Game = {
 
     Effects.update(dt);
     Camera.update(p, this.map, dt);
+    Sound.startBgm(this.map.theme);
 
     // 自動存檔
     this.saveTimer += dt;
@@ -320,7 +322,7 @@ const Game = {
     Renderer.drawBackground(ctx, this.map, Camera, t);
     Camera.begin(ctx);
     Renderer.drawMapGeometry(ctx, this.map, t);
-    if (this.map.npc) Sprites.drawNpc(ctx, this.map.npc, t);
+    if (this.map.npcs) for (const n of this.map.npcs) Sprites.drawNpc(ctx, n, t);
     for (const d of this.drops) d.draw(ctx, t);
     for (const m of this.monsters) Sprites.drawMonster(ctx, m, t);
     for (const pj of this.projectiles) pj.draw(ctx, t);

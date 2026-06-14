@@ -1505,6 +1505,7 @@ const Sprites = {
   // ══════════════════ 商人 NPC ══════════════════
   // PNG 優先：assets/sprites/npc/npc-merchant.png；缺檔用程序化商人
   drawNpc(ctx, npc, t) {
+    const def = (typeof NpcDB !== 'undefined' && NpcDB[npc.id]) || { name: '商人', type: 'shop', sprite: 'npc-merchant', color: '#c8a85a' };
     ctx.save();
     ctx.translate(npc.x, npc.y);
     ctx.fillStyle = 'rgba(22,30,22,0.24)';
@@ -1512,14 +1513,14 @@ const Sprites = {
     ctx.ellipse(0, -1, 15, 4.2, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    const img = this._loadImage(this.ASSET_BASE + 'sprites/npc/npc-merchant.png');
+    const img = this._loadImage(this.ASSET_BASE + 'sprites/npc/' + (def.sprite || 'npc-merchant') + '.png');
     if (this._readyImage(img)) {
       const h = 74, w = h * img.naturalWidth / img.naturalHeight;
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(img, -w / 2, -h, w, h);
     } else {
-      // 程序化矮胖商人：袍子 + 圍裙 + 帽子 + 笑臉
-      ctx.fillStyle = '#5a3a8a';
+      // 程序化矮胖 NPC：袍子(依職業色) + 圍裙 + 帽子 + 笑臉
+      ctx.fillStyle = def.color || '#5a3a8a';
       ctx.beginPath();
       ctx.moveTo(-13, -2);
       ctx.quadraticCurveTo(-16, -34, -8, -46);
@@ -1558,12 +1559,21 @@ const Sprites = {
       ctx.beginPath(); ctx.arc(0, -50, 4, 0.2, Math.PI - 0.2); ctx.stroke();
     }
 
-    // 頭上「商店」氣泡 + 上箭頭提示
-    const yb = Math.sin(t * 3) * 3;
-    ctx.translate(0, -86 + yb);
-    ctx.font = '11px "Microsoft JhengHei", sans-serif';
+    // 名牌（頭上）
+    ctx.font = '10px "Microsoft JhengHei", sans-serif';
     ctx.textAlign = 'center';
-    const label = '↑ 商店';
+    const nameW = ctx.measureText(def.name).width + 14;
+    ctx.fillStyle = 'rgba(16,14,30,0.7)';
+    Utils.rr(ctx, -nameW / 2, -90, nameW, 15, 7);
+    ctx.fill();
+    ctx.fillStyle = '#fff3d6';
+    ctx.fillText(def.name, 0, -79);
+    // 互動氣泡（依類型 + 任務驚嘆號）
+    const yb = Math.sin(t * 3) * 3;
+    ctx.translate(0, -108 + yb);
+    let label = def.type === 'craft' ? '↑ 製作' : def.type === 'quest' ? '↑ 對話' : '↑ 商店';
+    if (def.type === 'quest' && typeof Game !== 'undefined' && Game.player && this._npcHasQuest(npc.id, Game.player)) label = '❗ ↑ 任務';
+    ctx.font = '11px "Microsoft JhengHei", sans-serif';
     const lw = ctx.measureText(label).width + 16;
     ctx.fillStyle = 'rgba(16,14,30,0.78)';
     Utils.rr(ctx, -lw / 2, -2, lw, 17, 8);
@@ -1575,6 +1585,24 @@ const Sprites = {
     ctx.fillStyle = '#ffe9b0';
     ctx.fillText(label, 0, 10.5);
     ctx.restore();
+  },
+
+  // 該 NPC 是否有可接或可完成的任務（顯示驚嘆號）
+  _npcHasQuest(npcId, p) {
+    if (typeof QuestDB === 'undefined') return false;
+    for (const qid in QuestDB) {
+      const d = QuestDB[qid];
+      if (d.giver !== npcId) continue;
+      const st = p.quests[qid];
+      if (!st) {
+        const lvOk = p.level >= (d.reqLv || 1);
+        const prevOk = !d.prev || (p.quests[d.prev] && p.quests[d.prev].s === 'done');
+        if (lvOk && prevOk) return true;            // 可接
+      } else if (st.s === 'active' && p.canCompleteQuest(qid)) {
+        return true;                                 // 可完成
+      }
+    }
+    return false;
   },
 
   // ══════════════════ 道具圖示 ══════════════════

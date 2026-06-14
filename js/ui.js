@@ -1,11 +1,12 @@
 // HUD 與所有遊戲視窗（奇幻 RPG 風格外觀；佈局與點擊判定座標不變）
 const UI = {
-  show: { inv: false, skill: false, stat: false, shop: false },
+  show: { inv: false, skill: false, stat: false, shop: false, craft: false, dialogue: false },
   R: {},
   confirmReset: 0,
   invTab: 'all',
   shopTab: 'buy',
   sellSel: null,   // 賣出數量選擇：{ slot, qty }
+  dlgNpc: null,    // 對話中的 NPC id
   INV_TABS: [['all', '全部'], ['use', '消耗'], ['equip', '裝備'], ['material', '材料']],
   SHOP_TABS: [['buy', '購買'], ['sell', '賣出'], ['expand', '背包格']],
   buyList: [
@@ -21,6 +22,25 @@ const UI = {
   },
 
   openShop() { this.show.shop = true; this.shopTab = 'buy'; this.sellSel = null; Sound.play('portal'); },
+  openNpc(n) {
+    const def = (typeof NpcDB !== 'undefined' && NpcDB[n.id]) || { type: 'shop' };
+    if (def.type === 'shop') this.openShop();
+    else if (def.type === 'craft') { this.show.craft = true; Sound.play('portal'); }
+    else { this.show.dialogue = true; this.dlgNpc = n.id; Sound.play('portal'); }
+  },
+  _npcQuests(npcId) {
+    const out = [];
+    for (const qid of QUEST_ORDER) if (QuestDB[qid].giver === npcId) out.push(qid);
+    return out;
+  },
+  _questStatus(qid, p) {
+    const d = QuestDB[qid], st = p.quests[qid];
+    if (st && st.s === 'done') return 'done';
+    if (st && st.s === 'active') return p.canCompleteQuest(qid) ? 'complete' : 'active';
+    const lvOk = p.level >= (d.reqLv || 1);
+    const prevOk = !d.prev || (p.quests[d.prev] && p.quests[d.prev].s === 'done');
+    return (lvOk && prevOk) ? 'available' : 'locked';
+  },
   _cat(id) { const d = ItemDB[id]; return d ? d.type : 'use'; },
   _valueOf(id) {
     const d = ItemDB[id];
@@ -162,6 +182,27 @@ const UI = {
         R.shopExpandBtn = { x: r.x + 50, y: top + 132, w: r.w - 100, h: 42 };
       }
     }
+    if (this.show.craft) {
+      const r = { x: 300, y: 64, w: 424, h: 452 };
+      R.craft = r;
+      R.craftClose = { x: r.x + r.w - 26, y: r.y + 7, w: 19, h: 19 };
+      R.craftRows = [];
+      CRAFT_ORDER.forEach((cid, i) => {
+        const ry = r.y + 44 + i * 49;
+        R.craftRows.push({ cid, x: r.x + 12, y: ry, w: r.w - 24, h: 45, btn: { x: r.x + r.w - 76, y: ry + 9, w: 60, h: 28 } });
+      });
+    }
+    if (this.show.dialogue && this.dlgNpc) {
+      const r = { x: 268, y: 70, w: 488, h: 396 };
+      R.dlg = r;
+      R.dlgClose = { x: r.x + r.w - 26, y: r.y + 7, w: 19, h: 19 };
+      R.dlgQuests = [];
+      const top = r.y + 96;
+      this._npcQuests(this.dlgNpc).forEach((qid, i) => {
+        const ry = top + i * 66;
+        R.dlgQuests.push({ qid, x: r.x + 14, y: ry, w: r.w - 28, h: 60, btn: { x: r.x + r.w - 96, y: ry + 17, w: 78, h: 28 } });
+      });
+    }
     this.R = R;
   },
 
@@ -171,7 +212,8 @@ const UI = {
     if (Input.pressed['KeyK']) this.show.skill = !this.show.skill;
     if (Input.pressed['KeyP']) this.show.stat = !this.show.stat;
     if (Input.pressed['Escape']) {
-      this.show.inv = this.show.skill = this.show.stat = this.show.shop = false;
+      this.show.inv = this.show.skill = this.show.stat = this.show.shop = this.show.craft = this.show.dialogue = false;
+      this.sellSel = null;
     }
     this.layout();
     if (!Input.clicked) return;
@@ -233,6 +275,33 @@ const UI = {
       }
       return;
     }
+    if (R.craft && this.inRect(R.craft)) {
+      Input.clicked = false;
+      if (this.inRect(R.craftClose)) { this.show.craft = false; return; }
+      for (const row of R.craftRows) {
+        if (this.inRect(row.btn)) {
+          const res = p.craft(row.cid);
+          if (res === 'meso') { Effects.announce('楓幣不足', '#ef9a9a'); Sound.play('error'); }
+          else if (res === 'mats') { Effects.announce('材料不足', '#ef9a9a'); Sound.play('error'); }
+          else if (res === 'full') { Effects.announce('背包已滿', '#ef9a9a'); Sound.play('error'); }
+          return;
+        }
+      }
+      return;
+    }
+    if (R.dlg && this.inRect(R.dlg)) {
+      Input.clicked = false;
+      if (this.inRect(R.dlgClose)) { this.show.dialogue = false; return; }
+      for (const row of R.dlgQuests) {
+        if (this.inRect(row.btn)) {
+          const st = this._questStatus(row.qid, p);
+          if (st === 'available') p.acceptQuest(row.qid);
+          else if (st === 'complete') p.completeQuest(row.qid);
+          return;
+        }
+      }
+      return;
+    }
     if (R.inv && this.inRect(R.inv)) {
       Input.clicked = false;
       if (this.inRect(R.invClose)) { this.show.inv = false; return; }
@@ -266,12 +335,15 @@ const UI = {
     const p = game.player;
     this.drawMapName(ctx, game);
     this.drawBossBar(ctx, game);
+    this.drawQuestTracker(ctx, p);
     this.drawHUD(ctx, game);
     this.layout();
     if (this.show.inv) this.drawInv(ctx, p);
     if (this.show.skill) this.drawSkill(ctx, p);
     if (this.show.stat) this.drawStat(ctx, p);
     if (this.show.shop) this.drawShop(ctx, p);
+    if (this.show.craft) this.drawCraft(ctx, p);
+    if (this.show.dialogue) this.drawDialogue(ctx, p);
     this.drawTooltip(ctx, p);
   },
 
@@ -678,6 +750,141 @@ const UI = {
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffd87a';
     ctx.fillText(Utils.fmt(p.meso), r.x + 36, r.y + r.h - 12);
+  },
+
+  _wrap(ctx, text, x, y, maxw, lh) {
+    let line = '', yy = y;
+    for (const ch of String(text)) {
+      if (ctx.measureText(line + ch).width > maxw) { ctx.fillText(line, x, yy); line = ch; yy += lh; }
+      else line += ch;
+    }
+    if (line) ctx.fillText(line, x, yy);
+    return yy + lh;
+  },
+
+  _objText(qid, p, active) {
+    const o = QuestDB[qid].objective;
+    const prog = active ? p.questProgress(qid) : 0;
+    if (o.type === 'kill') {
+      const mob = MonsterDB[o.target];
+      return `討伐 ${mob ? mob.name : o.target}　${prog}/${o.count}`;
+    }
+    const it = ItemDB[o.item];
+    return `收集 ${it ? it.name : o.item}　${prog}/${o.count}`;
+  },
+
+  _rewardText(qid) {
+    const r = QuestDB[qid].reward || {};
+    const parts = [];
+    if (r.meso) parts.push(`${Utils.fmt(r.meso)} 楓幣`);
+    if (r.exp) parts.push(`${Utils.fmt(r.exp)} EXP`);
+    for (const it of (r.items || [])) parts.push(`${ItemDB[it.id] ? ItemDB[it.id].name : it.id}${it.qty > 1 ? ' x' + it.qty : ''}`);
+    return '獎勵：' + parts.join('、');
+  },
+
+  drawCraft(ctx, p) {
+    const r = this.R.craft;
+    this.chrome(ctx, r, '🔨 鐵匠 鋼爺 - 製作', this.R.craftClose);
+    for (const row of this.R.craftRows) {
+      const d = CraftDB[row.cid];
+      const res = ItemDB[d.result.id];
+      const afford = p.meso >= d.cost;
+      const haveMats = d.mats.every((m) => p.invCount(m.id) >= m.qty);
+      ctx.fillStyle = this.inRect(row) ? 'rgba(255,222,130,0.08)' : 'rgba(255,255,255,0.04)';
+      Utils.rr(ctx, row.x, row.y, row.w, row.h, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(120,130,180,0.25)'; ctx.lineWidth = 1;
+      Utils.rr(ctx, row.x, row.y, row.w, row.h, 7); ctx.stroke();
+      Sprites.drawItemIcon(ctx, d.result.id, row.x + 22, row.y + 22, 30);
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 13px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = '#ffeec2';
+      ctx.fillText(`${res ? res.name : d.result.id}${d.result.qty > 1 ? ' x' + d.result.qty : ''}`, row.x + 44, row.y + 16);
+      ctx.font = '10px "Microsoft JhengHei", sans-serif';
+      let mx = row.x + 44;
+      for (const m of d.mats) {
+        const mi = ItemDB[m.id], ok = p.invCount(m.id) >= m.qty;
+        ctx.fillStyle = ok ? '#a5d6a7' : '#ef9a9a';
+        const txt = `${mi ? mi.name : m.id} ${p.invCount(m.id)}/${m.qty}`;
+        ctx.fillText(txt, mx, row.y + 35);
+        mx += ctx.measureText(txt).width + 10;
+      }
+      ctx.textAlign = 'right';
+      ctx.fillStyle = afford ? '#ffd87a' : '#ef9a9a';
+      ctx.font = '10px Verdana';
+      ctx.fillText(`${Utils.fmt(d.cost)} 楓幣`, row.btn.x - 8, row.y + 16);
+      this._btn(ctx, row.btn, '製作', afford && haveMats, 'green');
+    }
+    Sprites.drawItemIcon(ctx, 'meso', r.x + 22, r.y + r.h - 17, 20);
+    ctx.font = 'bold 13px "Microsoft JhengHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffd87a';
+    ctx.fillText(Utils.fmt(p.meso), r.x + 36, r.y + r.h - 12);
+  },
+
+  drawDialogue(ctx, p) {
+    const r = this.R.dlg;
+    const def = NpcDB[this.dlgNpc] || { name: 'NPC', story: '' };
+    this.chrome(ctx, r, '💬 ' + def.name, this.R.dlgClose);
+    ctx.textAlign = 'left';
+    ctx.font = '13px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#e8eef8';
+    this._wrap(ctx, def.story, r.x + 18, r.y + 50, r.w - 36, 18);
+    for (const row of this.R.dlgQuests) {
+      const d = QuestDB[row.qid];
+      const st = this._questStatus(row.qid, p);
+      const tone = st === 'done' ? 0.06 : st === 'locked' ? 0.03 : 0.09;
+      ctx.fillStyle = `rgba(120,150,230,${tone})`;
+      Utils.rr(ctx, row.x, row.y, row.w, row.h, 8); ctx.fill();
+      ctx.strokeStyle = st === 'complete' ? 'rgba(160,230,140,0.7)' : st === 'available' ? 'rgba(232,196,110,0.6)' : 'rgba(120,130,180,0.25)';
+      ctx.lineWidth = 1.2;
+      Utils.rr(ctx, row.x, row.y, row.w, row.h, 8); ctx.stroke();
+      // 任務名 + 等級
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 13px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = st === 'locked' ? '#8a8a99' : '#ffeec2';
+      ctx.fillText(`${d.name}　Lv.${d.reqLv || 1}`, row.x + 12, row.y + 18);
+      // 目標 + 進度
+      ctx.font = '11px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = '#a8bcd8';
+      ctx.fillText(this._objText(row.qid, p, st === 'active' || st === 'complete'), row.x + 12, row.y + 36);
+      // 獎勵
+      ctx.fillStyle = '#8fa3bd';
+      ctx.fillText(this._rewardText(row.qid), row.x + 12, row.y + 52);
+      // 狀態 / 按鈕
+      if (st === 'available') this._btn(ctx, row.btn, '接受', true, 'green');
+      else if (st === 'complete') this._btn(ctx, row.btn, '完成', true, 'blue');
+      else {
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 12px "Microsoft JhengHei", sans-serif';
+        ctx.fillStyle = st === 'done' ? '#a5d6a7' : st === 'active' ? '#ffd87a' : '#8a8a99';
+        const lbl = st === 'done' ? '✓ 已完成' : st === 'active' ? '進行中' : '🔒 未達成';
+        ctx.fillText(lbl, row.btn.x + row.btn.w / 2, row.btn.y + 19);
+      }
+    }
+  },
+
+  drawQuestTracker(ctx, p) {
+    const active = QUEST_ORDER.filter((q) => p.quests[q] && p.quests[q].s === 'active').slice(0, 4);
+    if (!active.length) return;
+    const x = 12, w = 196;
+    let y = 44;
+    ctx.font = '11px "Microsoft JhengHei", sans-serif';
+    for (const qid of active) {
+      const d = QuestDB[qid];
+      const done = p.canCompleteQuest(qid);
+      const prog = p.questProgress(qid);
+      this.panel(ctx, x, y, w, 34, 7);
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 11px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = done ? '#a5d6a7' : '#ffe9b0';
+      ctx.fillText((done ? '✓ ' : '▸ ') + d.name, x + 10, y + 14);
+      ctx.font = '10px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = '#a8bcd8';
+      const o = d.objective;
+      const tgt = o.type === 'kill' ? (MonsterDB[o.target] ? MonsterDB[o.target].name : o.target) : (ItemDB[o.item] ? ItemDB[o.item].name : o.item);
+      ctx.fillText(`${tgt} ${prog}/${o.count}` + (done ? '（回村交付）' : ''), x + 10, y + 28);
+      y += 40;
+    }
   },
 
   drawSkill(ctx, p) {

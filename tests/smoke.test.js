@@ -63,7 +63,7 @@ const requestAnimationFrame = (cb) => { __rafCb = cb; };
 // 依 index.html 的載入順序
 const order = [
   'js/config.js', 'js/utils.js', 'js/input.js', 'js/sound.js',
-  'js/data/items.js', 'js/data/skills.js', 'js/data/classes.js', 'js/data/monsters.js', 'js/data/maps.js',
+  'js/data/items.js', 'js/data/skills.js', 'js/data/classes.js', 'js/data/monsters.js', 'js/data/maps.js', 'js/data/quests.js',
   'js/effects.js', 'js/sprites.js', 'js/camera.js',
   'js/entities/drops.js', 'js/entities/projectile.js', 'js/entities/monster.js', 'js/entities/pet.js', 'js/entities/player.js',
   'js/render.js', 'js/ui.js', 'js/game.js', 'js/main.js',
@@ -109,7 +109,7 @@ Game.player.climbing = oldClimb;
 check('攀爬角色 sheet 載入', __loadedImages.includes('assets/sprites/player/hero-warrior-climb-sheet.png'));
 Sprites.drawPet(ctxStub_, Game.pet, 0.5);
 check('寵物 PNG 載入', __loadedImages.includes('assets/sprites/pet/pet-default.png'));
-Sprites.drawNpc(ctxStub_, Game.map.npc, 0.5);
+Sprites.drawNpc(ctxStub_, Game.map.npcs[0], 0.5);
 check('商人 NPC PNG 載入', __loadedImages.includes('assets/sprites/npc/npc-merchant.png'));
 Effects.slash(Game.player.x, Game.player.y - 28, 1, 1);
 Effects.drawWorld(ctxStub_);
@@ -345,6 +345,43 @@ UI.update(Game, 1 / 60);
 check('賣出指定數量(5)後剩 15', pp.inventory[0] && pp.inventory[0].qty === 15);
 check('賣出獲得對應楓幣', pp.meso === meso0 + UI._sellOf('redPotion') * 5);
 UI.show.shop = false; UI.sellSel = null;
+
+// 16. 任務系統
+Game.loadMap('town', null, null);
+const pq = Game.player;
+pq.level = 30; pq.quests = {};
+pq.acceptQuest('q_snail');
+check('接受任務', pq.quests.q_snail && pq.quests.q_snail.s === 'active');
+for (let i = 0; i < 12; i++) pq.onKill('snail');
+check('擊殺進度封頂', pq.questProgress('q_snail') === QuestDB.q_snail.objective.count);
+check('擊殺任務可完成', pq.canCompleteQuest('q_snail'));
+const qm0 = pq.meso;
+pq.completeQuest('q_snail');
+check('完成任務領楓幣', pq.quests.q_snail.s === 'done' && pq.meso > qm0);
+pq.quests = {}; pq.acceptQuest('q_slime');
+for (let i = 0; i < pq.invSize; i++) pq.inventory[i] = null;
+pq.inventory[0] = { id: 'slimeGel', qty: 6 };
+check('收集任務可完成', pq.canCompleteQuest('q_slime'));
+pq.completeQuest('q_slime');
+check('收集任務消耗素材', pq.invCount('slimeGel') === 0);
+
+// 17. 製作系統
+pq.meso = 99999; pq.quests = {};
+for (let i = 0; i < pq.invSize; i++) pq.inventory[i] = null;
+pq.inventory[0] = { id: 'snailShell', qty: 4 };
+pq.inventory[1] = { id: 'goldOre', qty: 2 };
+check('製作成功', pq.craft('c_iron') === 'ok' && pq.invCount('ironSword') >= 1);
+check('製作消耗材料', pq.invCount('snailShell') === 0 && pq.invCount('goldOre') === 0);
+check('材料不足擋下', pq.craft('c_helm') === 'mats');
+
+// 18. NPC 視窗繪製
+let npcDrawOk = true;
+try {
+  UI.show.craft = true; UI.layout(); Game.draw(ctxStub_); UI.show.craft = false;
+  UI.show.dialogue = true; UI.dlgNpc = 'hunter'; UI.layout(); Game.draw(ctxStub_); UI.show.dialogue = false; UI.dlgNpc = null;
+} catch (e) { npcDrawOk = false; console.error(e); }
+check('製作/對話視窗繪製不報錯', npcDrawOk);
+check('全部 NPC 數量正確', MapDB.town.npcs.length === 5);
 
 console.log(\`\\n煙霧測試結果：\${__pass} 通過，\${__fail} 失敗\`);
 if (__fail > 0) process.exit(1);

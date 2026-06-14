@@ -2,6 +2,21 @@
 const Sound = {
   ctx: null,
   muted: false,
+  bgmTimer: null,
+  bgmAudio: null,
+  bgmTheme: null,
+  bgmStep: 0,
+  BGM_BASE: 'assets/audio/',
+  // 各主題的簡單旋律（程序化合成；有真實音檔則優先用音檔）
+  BGM: {
+    meadow: [523, 659, 784, 659, 587, 698, 880, 698],
+    forest: [440, 523, 659, 523, 494, 587, 740, 587],
+    cave:   [392, 494, 587, 494, 440, 523, 659, 523],
+    altar:  [330, 415, 494, 415, 349, 440, 523, 440],
+    snow:   [587, 740, 880, 740, 659, 784, 988, 784],
+    lava:   [349, 440, 523, 440, 392, 494, 587, 494],
+    castle: [294, 370, 440, 370, 330, 415, 494, 415],
+  },
 
   ensure() {
     if (!this.ctx) {
@@ -13,7 +28,64 @@ const Sound = {
 
   toggle() {
     this.muted = !this.muted;
+    if (this.bgmAudio) this.bgmAudio.volume = this.muted ? 0 : 0.4;
     return !this.muted;
+  },
+
+  // ── 背景音樂 ──
+  startBgm(theme) {
+    if (!this.ctx) return;                       // 尚無音訊環境（或 node 測試）→ 不啟動
+    if (this.bgmTheme === theme && (this.bgmTimer || this.bgmAudio)) return;
+    this.stopBgm();
+    this.bgmTheme = theme;
+    this._startProc(theme);                       // 程序化合成（保底）
+    if (typeof Audio !== 'undefined') {           // 若有真實音檔則切換
+      try {
+        const a = new Audio(this.BGM_BASE + 'bgm_' + theme + '.mp3');
+        a.loop = true;
+        a.volume = this.muted ? 0 : 0.4;
+        const p = a.play();
+        if (p && p.then) {
+          p.then(() => {
+            this.bgmAudio = a;
+            if (this.bgmTimer) { clearInterval(this.bgmTimer); this.bgmTimer = null; }
+          }).catch(() => {});
+        }
+      } catch (e) { /* 用程序化即可 */ }
+    }
+  },
+  stopBgm() {
+    if (this.bgmTimer) { clearInterval(this.bgmTimer); this.bgmTimer = null; }
+    if (this.bgmAudio) { try { this.bgmAudio.pause(); } catch (e) {} this.bgmAudio = null; }
+    this.bgmTheme = null;
+  },
+  _startProc(theme) {
+    if (typeof setInterval === 'undefined') return;
+    this.bgmStep = 0;
+    this.bgmTimer = setInterval(() => this._bgmTick(), 360);
+  },
+  _bgmTick() {
+    if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+    const seq = this.BGM[this.bgmTheme] || this.BGM.meadow;
+    const n = seq[this.bgmStep % seq.length];
+    this.bgmStep++;
+    this._bgmNote(n, 0.32, 0.028, 'triangle');
+    if (this.bgmStep % 2 === 0) this._bgmNote(n / 2, 0.5, 0.020, 'sine');
+  },
+  _bgmNote(f, dur, vol, type) {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const t0 = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f, t0);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g);
+    g.connect(this.ctx.destination);
+    o.start(t0);
+    o.stop(t0 + dur + 0.05);
   },
 
   beep(f0, f1, dur, type, vol, delay) {

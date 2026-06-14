@@ -208,15 +208,27 @@ for (const id in MapDB) {
 }
 
 // 每張地圖放一位商人 NPC，站在「安全的浮空平台」上（怪物不會生在此平台），
-// 旁邊附一條繩索方便上下。可買賣 / 擴充背包。
+// 旁邊附一條繩索方便上下。NPC 以 map.npcs 陣列表示。
 for (const id in MapDB) {
   const m = MapDB[id];
-  if (m.npc) continue;
+  if (m.npcs) continue;
   const ground = m.platforms.find((p) => p.ground) || { y: 560 };
+  const gy = ground.y;
   const nx = Math.min(320, m.w - 140);
-  const py = ground.y - 96;
-  m.npc = { x: nx, y: py, name: '雜貨商人', safe: true };
+  const py = gy - 96;
   m.platforms.push({ x1: nx - 90, x2: nx + 90, y: py });   // 商人專用安全平台
   if (!m.ropes) m.ropes = [];
-  m.ropes.push({ x: nx - 66, y1: py, y2: ground.y });       // 上下平台的繩索
+  m.ropes.push({ x: nx - 66, y1: py, y2: gy });            // 上下平台的繩索
+  m.npcs = [{ id: 'merchant', x: nx, y: py }];
+}
+
+// 楓葉鎮：安全城鎮，地面即安全，放置村莊 NPC（村長 / 獵人 / 草藥師 / 鐵匠）
+if (MapDB.town) {
+  const gy = (MapDB.town.platforms.find((p) => p.ground) || { y: 560 }).y;
+  MapDB.town.npcs.push(
+    { id: 'elder', x: 600, y: gy },
+    { id: 'hunter', x: 820, y: gy },
+    { id: 'herbalist', x: 1040, y: gy },
+    { id: 'blacksmith', x: 1300, y: gy },
+  );
 }

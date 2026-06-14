@@ -22,6 +22,7 @@ class Player {
     this.skills[jd.skills[0]] = 1;   // 起始技能
     this.skillCds = {};
     this.buffs = {};                 // id -> { atk, def, speed, until }
+    this.quests = {};                // questId -> { s:'active'|'done', k:擊殺數 }
     this.invSize = (save && save.invSize) || CONFIG.INV_SIZE;
     this.pickupCd = 0;
     this.inventory = new Array(this.invSize).fill(null);
@@ -165,9 +166,13 @@ class Player {
         game.transfer(portal.target, portal.targetPortal);
         return;
       }
-      if (map.npc && Math.abs(map.npc.x - this.x) < 48 && Math.abs(map.npc.y - this.y) < 52 && this.onGround) {
-        UI.openShop();
-        return;
+      if (this.onGround && map.npcs) {
+        for (const n of map.npcs) {
+          if (Math.abs(n.x - this.x) < 48 && Math.abs(n.y - this.y) < 56) {
+            UI.openNpc(n);
+            return;
+          }
+        }
       }
     }
 
@@ -534,6 +539,86 @@ class Player {
     Sound.play('equip');
   }
 
+  // ── 背包查詢 / 移除 ──
+  invCount(itemId) {
+    let c = 0;
+    for (const s of this.inventory) if (s && s.id === itemId) c += s.qty;
+    return c;
+  }
+  removeItems(itemId, n) {
+    let need = n;
+    for (let i = 0; i < this.inventory.length && need > 0; i++) {
+      const s = this.inventory[i];
+      if (s && s.id === itemId) {
+        const take = Math.min(need, s.qty);
+        s.qty -= take; need -= take;
+        if (s.qty <= 0) this.inventory[i] = null;
+      }
+    }
+    return need <= 0;
+  }
+
+  // ── 任務 ──
+  onKill(type) {
+    for (const qid in this.quests) {
+      const q = this.quests[qid];
+      if (q.s !== 'active') continue;
+      const d = QuestDB[qid];
+      if (d && d.objective.type === 'kill' && d.objective.target === type) {
+        q.k = Math.min((q.k || 0) + 1, d.objective.count);
+      }
+    }
+  }
+  acceptQuest(qid) {
+    if (this.quests[qid]) return false;
+    this.quests[qid] = { s: 'active', k: 0 };
+    Sound.play('equip');
+    Effects.announce(`接受任務：${QuestDB[qid].name}`, '#ffe082');
+    return true;
+  }
+  questProgress(qid) {
+    const q = this.quests[qid], d = QuestDB[qid];
+    if (!q || !d) return 0;
+    return d.objective.type === 'kill' ? (q.k || 0) : this.invCount(d.objective.item);
+  }
+  canCompleteQuest(qid) {
+    const q = this.quests[qid], d = QuestDB[qid];
+    if (!q || q.s !== 'active' || !d) return false;
+    return this.questProgress(qid) >= d.objective.count;
+  }
+  completeQuest(qid) {
+    if (!this.canCompleteQuest(qid)) return false;
+    const d = QuestDB[qid];
+    if (d.objective.type === 'collect') this.removeItems(d.objective.item, d.objective.count);
+    const r = d.reward || {};
+    if (r.meso) this.meso += r.meso;
+    for (const it of (r.items || [])) this.addItem(it.id, it.qty);
+    this.quests[qid].s = 'done';
+    Effects.announce(`✅ 任務完成：${d.name}`, '#a5d6a7');
+    Sound.play('levelup');
+    if (r.exp) this.gainExp(r.exp);
+    return true;
+  }
+
+  // ── 製作（鐵匠）──
+  craft(cid) {
+    const d = CraftDB[cid];
+    if (!d) return 'bad';
+    if (this.meso < d.cost) return 'meso';
+    for (const m of d.mats) if (this.invCount(m.id) < m.qty) return 'mats';
+    // 預估背包空間：先扣材料再放成品
+    for (const m of d.mats) this.removeItems(m.id, m.qty);
+    if (!this.addItem(d.result.id, d.result.qty)) {
+      // 背包滿：退回材料
+      for (const m of d.mats) this.addItem(m.id, m.qty);
+      return 'full';
+    }
+    this.meso -= d.cost;
+    Sound.play('equip');
+    Effects.announce(`🔨 製作成功：${ItemDB[d.result.id].name}`, '#ffe082');
+    return 'ok';
+  }
+
   // 擴充背包格數（商人購買）
   expandInv(count) {
     const add = Math.min(count, CONFIG.INV_MAX - this.invSize);
@@ -552,6 +637,7 @@ class Player {
       hp: Math.round(this.hp), mp: Math.round(this.mp),
       meso: this.meso, sp: this.sp, invSize: this.invSize,
       skills: this.skills, inventory: this.inventory, equips: this.equips,
+      quests: this.quests,
     };
   }
 
@@ -563,6 +649,7 @@ class Player {
     this.sp = s.sp || 0;
     this.skills = s.skills || {};
     if (!Object.keys(this.skills).length) this.skills[this.jobDef.skills[0]] = 1;
+    this.quests = s.quests || {};
     this.invSize = Math.min(CONFIG.INV_MAX, Math.max(CONFIG.INV_SIZE, s.invSize || CONFIG.INV_SIZE));
     const inv = new Array(this.invSize).fill(null);
     (s.inventory || []).slice(0, this.invSize).forEach((v, i) => { inv[i] = v; });

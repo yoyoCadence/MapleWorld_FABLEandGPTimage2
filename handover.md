@@ -608,6 +608,54 @@ Result:
 Smoke test result: 72 passed, 0 failed
 ```
 
+## RPG Systems Pass (Claude, 2026-06-14): quests / village / crafting / BGM
+
+Added four systems. New data file: `js/data/quests.js` (NpcDB, QuestDB, CraftDB).
+
+### Village + NPCs
+- Maps now use `map.npcs = [{id,x,y}]`. Every map has a merchant on a safe
+  floating platform. The town (`town`) also has elder / hunter / herbalist /
+  blacksmith. Press Up next to an NPC to interact (shop / craft / dialogue by type).
+- NPC art: `assets/sprites/npc/<sprite>.png` per NpcDB entry. Procedural fallback
+  is a colored merchant. See asset request below.
+
+### Quests
+- 8 quests chained across the 4 bosses. Kill quests count via
+  `Player.onKill(type)` (hooked in `Game.onMonsterDeath`); collect quests check
+  inventory at turn-in. HUD shows an active-quest tracker (top-left).
+- Quest state saved in the player save (`quests`).
+
+### Crafting
+- Blacksmith craft window: 8 recipes (materials + meso -> item). `Player.craft(id)`.
+
+### BGM (js/sound.js)
+- Procedural per-theme background music (WebAudio), starts on first map after a
+  user gesture; M key mutes everything (SFX + BGM).
+- Real audio hook: drop `assets/audio/bgm_<theme>.mp3` (themes: meadow, forest,
+  cave, altar, snow, lava, castle) and it auto-plays instead of the synth.
+
+### NEW ASSET REQUESTS
+
+1) NPC sprites - `assets/sprites/npc/<sprite>.png` (single static, facing right,
+   ~?x74, transparent). Needed (merchant already exists):
+   - `npc-blacksmith.png`  (gruff smith, apron, hammer)
+   - `npc-elder.png`       (village elder, robe, white beard)
+   - `npc-hunter.png`      (ranger, bow on back, green)
+   - `npc-herbalist.png`   (young herbalist girl, basket, pink)
+   (Names/colors are in `js/data/quests.js` NpcDB.)
+
+2) BGM audio - `assets/audio/bgm_<theme>.mp3` x7 (meadow, forest, cave, altar,
+   snow, lava, castle). Looping tracks; ~0.4 volume in-game. Optional - the
+   synth BGM plays until these exist.
+
+### Verification
+- `node tests\smoke.test.js` -> 83 passed, 0 failed (added quest accept/complete,
+  collect-quest material consumption, crafting success + insufficient-material,
+  craft/dialogue window draw, town npc count).
+- Headless preview confirms: town with 5 NPCs + name plates + interaction bubbles,
+  dialogue window with quest list/accept/complete, craft window with recipes, and
+  the HUD quest tracker.
+
 ## Recommended Next Steps
 
 The new animation sheets are functional and integrated, but most are generated from static PNGs. Good follow-up work:
