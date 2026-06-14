@@ -183,9 +183,19 @@ const Sprites = {
 
   _drawPlayerAsset(ctx, p, t) {
     let img = null;
+    let cols = 1;
+    let frame = 0;
     if (p.climbing) {
-      const cf = this.PLAYER_CLIMB_ASSETS[p.job] || ('sprites/player/hero-' + p.job + '-climb.png');
-      img = this._loadImage(this.ASSET_BASE + cf);
+      const sheetFile = 'sprites/player/hero-' + p.job + '-climb-sheet.png';
+      const sheet = this._loadImage(this.ASSET_BASE + sheetFile);
+      if (this._readyImage(sheet)) {
+        img = sheet;
+        cols = 6;
+        frame = Math.floor(p.animT * 9) % cols;
+      } else {
+        const cf = this.PLAYER_CLIMB_ASSETS[p.job] || ('sprites/player/hero-' + p.job + '-climb.png');
+        img = this._loadImage(this.ASSET_BASE + cf);
+      }
     }
     if (!this._readyImage(img)) {
       const jobFile = this.PLAYER_ASSETS[p.job] || ('sprites/player/hero-' + p.job + '.png');
@@ -199,23 +209,25 @@ const Sprites = {
     const inAir = !p.onGround;
     const walking = Math.abs(p.vx) > 10 && p.onGround;
     const bob = p.climbing
-      ? Math.sin(p.animT * 8) * 1.4
+      ? (cols > 1 ? Math.sin(p.animT * 9) * 0.45 : Math.sin(p.animT * 8) * 1.4)
       : inAir
         ? -2
         : walking
           ? Math.sin(p.animT * 18) * 2.4
           : Math.sin(t * 2.3) * 1.2;
-    const lean = attacking ? -0.11 + q * 0.22 : inAir ? -0.06 : walking ? Math.sin(p.animT * 9) * 0.035 : 0;
+    const lean = p.climbing && cols > 1 ? 0 : attacking ? -0.11 + q * 0.22 : inAir ? -0.06 : walking ? Math.sin(p.animT * 9) * 0.035 : 0;
     const dh = p.climbing ? 76 : 84;
-    const dw = dh * (img.naturalWidth / img.naturalHeight);
+    const sw = img.naturalWidth / cols;
+    const sh = img.naturalHeight;
+    const dw = dh * (sw / sh);
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.translate(0, bob);
     ctx.scale(-p.facing, 1);
     ctx.rotate(lean);
-    if (p.climbing) ctx.rotate(Math.sin(p.animT * 7) * 0.035);
-    ctx.drawImage(img, -dw * 0.48, -dh - 2, dw, dh);
+    if (p.climbing && cols === 1) ctx.rotate(Math.sin(p.animT * 7) * 0.035);
+    ctx.drawImage(img, frame * sw, 0, sw, sh, -dw * 0.48, -dh - 2, dw, dh);
     if (attacking && !p.climbing) this._drawWeaponAsset(ctx, p, q, t, dw, dh);
     ctx.restore();
     return true;

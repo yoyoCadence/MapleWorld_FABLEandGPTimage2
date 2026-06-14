@@ -100,6 +100,17 @@ check('怪物 PNG 素材載入', __loadedImages.includes('assets/sprites/mob_blu
 check('主角 PNG 素材載入', __loadedImages.includes('assets/sprites/player/hero-adventurer.png'));
 Sprites.drawItemIcon(ctxStub_, 'woodSword', 0, 0, 32);
 check('道具圖示 PNG 載入', __loadedImages.includes('assets/ui/items/woodSword.png'));
+Sprites.drawItemIcon(ctxStub_, 'redPotion', 0, 0, 32);
+check('新版藥水 icon 載入', __loadedImages.includes('assets/ui/items/redPotion.png'));
+const oldClimb = Game.player.climbing;
+Game.player.climbing = { x: Game.player.x };
+Sprites.drawPlayer(ctxStub_, Game.player, 0.5);
+Game.player.climbing = oldClimb;
+check('攀爬角色 sheet 載入', __loadedImages.includes('assets/sprites/player/hero-warrior-climb-sheet.png'));
+Sprites.drawPet(ctxStub_, Game.pet, 0.5);
+check('寵物 PNG 載入', __loadedImages.includes('assets/sprites/pet/pet-default.png'));
+Sprites.drawNpc(ctxStub_, Game.map.npc, 0.5);
+check('商人 NPC PNG 載入', __loadedImages.includes('assets/sprites/npc/npc-merchant.png'));
 Effects.slash(Game.player.x, Game.player.y - 28, 1, 1);
 Effects.drawWorld(ctxStub_);
 check('斬擊 PNG 素材載入', __loadedImages.includes('assets/sprites/fx/slash/sheet-transparent.png'));

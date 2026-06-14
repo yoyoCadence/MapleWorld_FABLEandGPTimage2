@@ -303,6 +303,155 @@ fallback, so the game runs without the PNGs; drop a matching file to upgrade.
 - Headless preview confirms: inventory tabs + locked slots, shop buy/sell/expand
   tabs, merchant NPC with bubble, pet following the hero, green slime fixed.
 
+## New Gameplay Asset Production Pass (Codex, 2026-06-14)
+
+Completed the "NEW ASSET REQUESTS" listed above. The runtime hooks were already
+present, so this pass focused on producing correctly named PNG assets and adding
+regression coverage.
+
+### Assets produced
+
+- Rebuilt all item icons:
+  - Path: `assets/ui/items/<itemId>.png`
+  - Count: 85 item icons, matching the keys in `js/data/items.js`
+  - Size: 32x32 transparent PNG
+  - Style: more detailed item silhouettes by category: potions, scrolls,
+    weapons, armor slots, accessories, and named materials.
+- Rebuilt meso icon:
+  - Path: `assets/ui/icon_meso.png`
+  - Size: 32x32 transparent PNG
+- Added climb poses:
+  - `assets/sprites/player/hero-warrior-climb.png`
+  - `assets/sprites/player/hero-adventurer-climb.png`
+  - `assets/sprites/player/hero-magician-climb.png`
+  - `assets/sprites/player/hero-archer-climb.png`
+  - `assets/sprites/player/hero-thief-climb.png`
+  - `assets/sprites/player/hero-pirate-climb.png`
+  - Each is a back-view climbing pose with arms raised for the existing
+    `hero-<job>-climb.png` hook.
+- Added pet art:
+  - Path: `assets/sprites/pet/pet-default.png`
+  - Baroque-style small red companion creature, transparent PNG.
+- Added merchant NPC art:
+  - Path: `assets/sprites/npc/npc-merchant.png`
+  - Hooded travelling merchant sprite, transparent PNG.
+
+### New script
+
+Added:
+
+```powershell
+py scripts\generate_new_gameplay_assets.py <raw-sheet.png>
+```
+
+Script behavior:
+
+- Rebuilds all item icons from `js/data/items.js`.
+- Rebuilds `assets/ui/icon_meso.png`.
+- If a raw magenta-background sprite sheet path is provided, splits it into:
+  - hero climb sprites
+  - `pet-default.png`
+  - `npc-merchant.png`
+
+The raw image_gen sheet used for this pass was:
+
+`C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_026b3f84c90619d9016a2e7a0d73e08191be77f11d0241bb0c.png`
+
+Keep that generated original in place; the project only uses the processed PNGs
+under `assets/`.
+
+### Smoke test additions
+
+`tests/smoke.test.js` now also checks these hooks:
+
+- `assets/ui/items/redPotion.png`
+- `assets/sprites/player/hero-warrior-climb-sheet.png`
+- `assets/sprites/pet/pet-default.png`
+- `assets/sprites/npc/npc-merchant.png`
+
+Latest verification:
+
+```powershell
+node tests\smoke.test.js
+```
+
+Result:
+
+```text
+Smoke test result: 69 passed, 0 failed
+```
+
+## Climb Animation Upgrade (Codex, 2026-06-14)
+
+The single climb pose was not enough to feel like climbing. This pass upgrades
+climbing to 6-frame per-class animation sheets while keeping the old single PNGs
+as fallback.
+
+### Assets produced
+
+- 6 horizontal-frame climb sheets:
+  - `assets/sprites/player/hero-warrior-climb-sheet.png`
+  - `assets/sprites/player/hero-adventurer-climb-sheet.png`
+  - `assets/sprites/player/hero-magician-climb-sheet.png`
+  - `assets/sprites/player/hero-archer-climb-sheet.png`
+  - `assets/sprites/player/hero-thief-climb-sheet.png`
+  - `assets/sprites/player/hero-pirate-climb-sheet.png`
+- 36 individual frame PNGs:
+  - `assets/sprites/player/hero-<job>-climb-1.png` through
+    `hero-<job>-climb-6.png`
+- The old single-frame hook files still exist:
+  - `assets/sprites/player/hero-<job>-climb.png`
+  - These are now frame 1 fallback images.
+
+### New script
+
+Added:
+
+```powershell
+py scripts\split_climb_animation_sheets.py job=raw.png ...
+```
+
+The script:
+
+- Takes one or more `job=raw.png` arguments.
+- Expects each raw image to be a `1x6` magenta-background climb sheet.
+- Chroma-keys the magenta background.
+- Trims long rope-only margins so the hero does not shrink in-game.
+- Outputs a 6-frame sheet at 220x260 per frame.
+- Also writes individual frame PNGs and the single-frame fallback.
+- Copies warrior output to adventurer output for compatibility.
+
+### Runtime change
+
+`js/sprites.js _drawPlayerAsset()` now prefers:
+
+`assets/sprites/player/hero-<job>-climb-sheet.png`
+
+while `p.climbing` is true. It plays 6 frames using `p.animT`.
+
+Fallback order:
+
+1. `hero-<job>-climb-sheet.png`
+2. `hero-<job>-climb.png`
+3. normal `hero-<job>.png`
+4. `hero-adventurer.png`
+
+The smoke test now checks:
+
+- `assets/sprites/player/hero-warrior-climb-sheet.png`
+
+Latest verification:
+
+```powershell
+node tests\smoke.test.js
+```
+
+Result:
+
+```text
+Smoke test result: 69 passed, 0 failed
+```
+
 ## Recommended Next Steps
 
 The new animation sheets are functional and integrated, but most are generated from static PNGs. Good follow-up work:
