@@ -217,16 +217,28 @@ const Sprites = {
     const file = this.WEAPON_ASSETS[id];
     const img = file ? this._loadImage(this.ASSET_BASE + 'sprites/weapons/' + file) : null;
     if (!this._readyImage(img)) return false;
+    const stem = file.replace(/\.png$/i, '');
+    const sheet = this._loadImage(this.ASSET_BASE + 'sprites/weapons/anim/' + stem + '_swing.png');
 
     const pulse = 0.55 + Math.sin(t * 14) * 0.18;
     ctx.save();
     ctx.translate(-heroW * 0.29, -heroH * 0.48);
-    ctx.rotate(-1.2 + q * 2.5);
-    ctx.globalAlpha = 0.9;
-    ctx.drawImage(img, -12, -57, 24, 64);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = id === 'kingSword' ? 0.55 + pulse * 0.25 : 0.35;
-    ctx.drawImage(img, -15, -61, 30, 72);
+    if (this._readyImage(sheet)) {
+      const cols = 6;
+      const frame = Math.min(cols - 1, Math.floor(q * cols));
+      const sw = sheet.naturalWidth / cols;
+      const sh = sheet.naturalHeight;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.86;
+      ctx.drawImage(sheet, frame * sw, 0, sw, sh, -46, -88, 92, 138);
+    } else {
+      ctx.rotate(-1.2 + q * 2.5);
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(img, -12, -57, 24, 64);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = id === 'kingSword' ? 0.55 + pulse * 0.25 : 0.35;
+      ctx.drawImage(img, -15, -61, 30, 72);
+    }
     ctx.restore();
     return true;
   },
@@ -642,8 +654,10 @@ const Sprites = {
     }
     ctx.translate(0, -hop);
     ctx.scale((m.dir < 0 ? -1 : 1) * (2 - sq), sq);
+    // d.tint 僅用於「程序化外形」的變色暫代；若有專屬 PNG 素材則不可再套色（會造成二次變色）
+    const usingArt = this._readyImage(this._monsterAsset(m));
     const filters = [];
-    if (d.tint) filters.push(d.tint);
+    if (d.tint && !usingArt) filters.push(d.tint);
     if (m.flash > 0) filters.push('brightness(2.1)');
     if (filters.length) ctx.filter = filters.join(' ');
 
@@ -708,6 +722,17 @@ const Sprites = {
     return file ? this._loadImage(this.ASSET_BASE + 'sprites/' + file) : null;
   },
 
+  _monsterSheetAsset(m, state) {
+    const file = (m.def && m.def.asset) || this.MONSTER_ASSETS[m.type] || '';
+    const stem = file.replace(/\.png$/i, '');
+    const candidates = ['mob_' + m.type, stem].filter(Boolean);
+    for (const name of candidates) {
+      const img = this._loadImage(this.ASSET_BASE + 'sprites/monsters/anim/' + name + '_' + state + '.png');
+      if (this._readyImage(img)) return img;
+    }
+    return null;
+  },
+
   _drawMonsterAsset(ctx, m, t) {
     const img = this._monsterAsset(m);
     if (!this._readyImage(img)) return false;
@@ -715,7 +740,15 @@ const Sprites = {
     const d = m.def;
     const heightScale = d.boss ? 1.45 : m.type === 'golem' ? 1.55 : 1.6;
     const dh = Math.round(d.h * heightScale);
-    const dw = Math.round(dh * img.naturalWidth / img.naturalHeight);
+    const sheet = this._monsterSheetAsset(m, m.flash > 0 ? 'hit' : 'idle');
+    const src = sheet || img;
+    const cols = sheet ? 4 : 1;
+    const sw = src.naturalWidth / cols;
+    const sh = src.naturalHeight;
+    const frame = sheet
+      ? (m.flash > 0 ? Math.min(3, Math.floor((1 - m.flash / 0.12) * 4)) : Math.floor((t * 5 + m.hopT * 2) % 4))
+      : 0;
+    const dw = Math.round(dh * sw / sh);
     const bob = d.move === 'hop'
       ? Math.sin(m.hopT * 9 + t * 0.5) * 1.5
       : d.move === 'walk'
@@ -724,7 +757,7 @@ const Sprites = {
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(img, -dw / 2, -dh + bob, dw, dh);
+    ctx.drawImage(src, frame * sw, 0, sw, sh, -dw / 2, -dh + bob, dw, dh);
     ctx.restore();
     return true;
   },

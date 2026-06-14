@@ -105,6 +105,16 @@ Effects.drawWorld(ctxStub_);
 check('斬擊 PNG 素材載入', __loadedImages.includes('assets/sprites/fx/slash/sheet-transparent.png'));
 
 // 2. 開始遊戲（新遊戲 → 選職畫面 → 確認預設職業劍士）
+Sprites.drawMonster(ctxStub_, Game.monsters[0], 0.5);
+check('怪物 idle sheet 載入', __loadedImages.includes('assets/sprites/monsters/anim/mob_snail_idle.png'));
+Sprites._drawWeaponAsset(ctxStub_, { equips: { weapon: 'woodSword' } }, 0.5, 0.5, 80, 84);
+check('武器 swing sheet 載入', __loadedImages.includes('assets/sprites/weapons/anim/weapon_wood_sword_swing.png'));
+Effects.spark(Game.player.x, Game.player.y - 28, '#ffe082');
+Effects.drawWorld(ctxStub_);
+check('命中特效 sheet 載入', __loadedImages.includes('assets/sprites/fx/impact/physical/sheet-transparent.png'));
+Effects.explosion(Game.player.x, Game.player.y - 28, 'fire', 1);
+Effects.drawWorld(ctxStub_);
+check('技能爆炸 sheet 載入', __loadedImages.includes('assets/sprites/fx/explosion/fire/sheet-transparent.png'));
 press('Enter');
 frames(1);
 check('進入選職畫面', Game.state === 'classSelect');

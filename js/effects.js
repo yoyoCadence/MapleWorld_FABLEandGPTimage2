@@ -38,6 +38,9 @@ const Effects = {
   poof(x, y, color) {
     this.fx.push({ type: 'poof', x, y, color: color || '#ccc', t: 0, life: 0.5 });
   },
+  explosion(x, y, style, size) {
+    this.fx.push({ type: 'explosion', x, y, style: style || 'arcane', size: size || 1, t: 0, life: 0.55 });
+  },
 
   announce(text, color) {
     this.banners.push({ text, color: color || '#ffe082', t: 0, life: 2.4 });
@@ -57,6 +60,18 @@ const Effects = {
 
   _readyImage(img) {
     return img && img.complete && img.naturalWidth > 0;
+  },
+
+  _drawFxSheet(ctx, path, p, cols, w, h, alpha) {
+    const sheet = this._loadImage(path);
+    if (!this._readyImage(sheet)) return false;
+    const frame = Math.min(cols - 1, Math.floor(p * cols));
+    const sw = sheet.naturalWidth / cols;
+    const sh = sheet.naturalHeight;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = alpha == null ? 1 : alpha;
+    ctx.drawImage(sheet, frame * sw, 0, sw, sh, -w / 2, -h / 2, w, h);
+    return true;
   },
 
   update(dt) {
@@ -115,6 +130,10 @@ const Effects = {
           }
         }
       } else if (f.type === 'spark') {
+        if (this._drawFxSheet(ctx, 'assets/sprites/fx/impact/physical/sheet-transparent.png', p, 4, 96, 96, 1 - p * 0.15)) {
+          ctx.restore();
+          continue;
+        }
         // 星形火花：中心閃光 + 放射光芒 + 飛散光點
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = 1 - p;
@@ -216,7 +235,29 @@ const Effects = {
         Art.sparkle(ctx, 4 * (1 - p) + 1);
         ctx.fill();
         ctx.restore();
+      } else if (f.type === 'explosion') {
+        const style = ['fire', 'ice', 'arcane', 'shadow'].includes(f.style) ? f.style : 'arcane';
+        const size = 118 * (f.size || 1);
+        if (this._drawFxSheet(ctx, 'assets/sprites/fx/explosion/' + style + '/sheet-transparent.png', p, 6, size, size, Math.max(0, 1 - p * 0.08))) {
+          ctx.restore();
+          continue;
+        }
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 1 - p;
+        ctx.fillStyle = f.color || '#b388ff';
+        ctx.beginPath();
+        ctx.arc(0, 0, 16 + p * 44, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.lineWidth = 4 - p * 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 24 + p * 56, 0, Math.PI * 2);
+        ctx.stroke();
       } else if (f.type === 'poof') {
+        if (this._drawFxSheet(ctx, 'assets/sprites/fx/explosion/arcane/sheet-transparent.png', p, 6, 126, 126, Math.max(0, 1 - p * 0.08))) {
+          ctx.restore();
+          continue;
+        }
         // 擊倒消散：柔軟煙團 + 飛散十字星 + 光圈
         ctx.globalAlpha = (1 - p) * 0.85;
         ctx.fillStyle = f.color;

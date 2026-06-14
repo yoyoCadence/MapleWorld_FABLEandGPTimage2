@@ -270,6 +270,8 @@ const Game = {
           if (Utils.rectsOverlap(r.x, r.y, r.w, r.h, mr.x, mr.y, mr.w, mr.h)) {
             pj.hitSet.add(m);
             this.playerStrike(m, pj.mult);
+            const fxStyle = pj.style === 'fire' ? 'fire' : pj.style === 'ice' ? 'ice' : pj.style === 'star' ? 'shadow' : 'arcane';
+            Effects.explosion(pj.x, pj.y, fxStyle, pj.style === 'fire' ? 1.08 : 0.9);
             pj.pierce--;
             if (pj.pierce <= 0) { pj.dead = true; break; }
           }
@@ -277,6 +279,7 @@ const Game = {
       } else if (!p.dead && p.invinc <= 0 && this.state === 'play') {
         if (Utils.rectsOverlap(r.x, r.y, r.w, r.h, pr2.x, pr2.y, pr2.w, pr2.h)) {
           p.takeDamage(pj.dmg, pj.x, this);
+          Effects.explosion(pj.x, pj.y, pj.kind === 'shock' ? 'fire' : 'arcane', 0.95);
           pj.dead = true;
         }
       }
