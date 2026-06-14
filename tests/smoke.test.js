@@ -51,7 +51,7 @@ class Image {
   }
   set src(value) {
     this._src = value;
-    __loadedImages.push(value);
+    __loadedImages.push(String(value).split('?')[0]); // 去掉 ?v= 快取破壞參數
   }
   get src() { return this._src; }
 }
@@ -111,6 +111,13 @@ Sprites.drawPet(ctxStub_, Game.pet, 0.5);
 check('寵物 PNG 載入', __loadedImages.includes('assets/sprites/pet/pet-default.png'));
 Sprites.drawNpc(ctxStub_, Game.map.npcs[0], 0.5);
 check('商人 NPC PNG 載入', __loadedImages.includes('assets/sprites/npc/npc-merchant.png'));
+['blacksmith', 'elder', 'hunter', 'herbalist'].forEach((id) => Sprites.drawNpc(ctxStub_, { id, x: 0, y: 0 }, 0.5));
+check('新增 NPC PNG 載入', [
+  'assets/sprites/npc/npc-blacksmith.png',
+  'assets/sprites/npc/npc-elder.png',
+  'assets/sprites/npc/npc-hunter.png',
+  'assets/sprites/npc/npc-herbalist.png',
+].every((src) => __loadedImages.includes(src)));
 Effects.slash(Game.player.x, Game.player.y - 28, 1, 1);
 Effects.drawWorld(ctxStub_);
 check('斬擊 PNG 素材載入', __loadedImages.includes('assets/sprites/fx/slash/sheet-transparent.png'));
@@ -128,7 +135,10 @@ Effects.drawWorld(ctxStub_);
 check('技能爆炸 sheet 載入', __loadedImages.includes('assets/sprites/fx/explosion/fire/sheet-transparent.png'));
 press('Enter');
 frames(1);
-check('進入選職畫面', Game.state === 'classSelect');
+check('進入存檔選擇畫面', Game.state === 'slotSelect');
+press('Enter');
+frames(1);
+check('空欄位進入選職畫面', Game.state === 'classSelect');
 press('Enter');
 frames(1);
 check('選職後進入遊戲', Game.state === 'play');
@@ -340,11 +350,17 @@ let sellDrawOk = true;
 try { Game.draw(ctxStub_); } catch (e) { sellDrawOk = false; console.error(e); }
 check('賣出數量彈窗繪製不報錯', sellDrawOk);
 const meso0 = pp.meso;
+// 點「賣出」→ 出現確認視窗（不直接賣出）
 Input.mouseX = UI.R.sellConfirm.x + 2; Input.mouseY = UI.R.sellConfirm.y + 2; Input.clicked = true;
 UI.update(Game, 1 / 60);
-check('賣出指定數量(5)後剩 15', pp.inventory[0] && pp.inventory[0].qty === 15);
+check('點賣出先跳確認視窗', UI.confirmSell === true && pp.inventory[0].qty === 20);
+// 點確認視窗的「確定賣出」才真的賣
+UI.layout();
+Input.mouseX = UI.R.sellYes.x + 2; Input.mouseY = UI.R.sellYes.y + 2; Input.clicked = true;
+UI.update(Game, 1 / 60);
+check('確認後賣出數量(5)剩 15', pp.inventory[0] && pp.inventory[0].qty === 15);
 check('賣出獲得對應楓幣', pp.meso === meso0 + UI._sellOf('redPotion') * 5);
-UI.show.shop = false; UI.sellSel = null;
+UI.show.shop = false; UI.sellSel = null; UI.confirmSell = false;
 
 // 16. 任務系統
 Game.loadMap('town', null, null);
@@ -382,6 +398,72 @@ try {
 } catch (e) { npcDrawOk = false; console.error(e); }
 check('製作/對話視窗繪製不報錯', npcDrawOk);
 check('全部 NPC 數量正確', MapDB.town.npcs.length === 5);
+
+// 19. 裝備隨機數值（roll / tier）
+const __rA = rollEquip('ironSword');
+check('rollEquip 產生數值與稀有度', __rA && __rA.atk > 0 && typeof __rA.tier === 'number');
+check('非裝備不產生 roll', rollEquip('redPotion') === null);
+const __pe = new Player(null, 'warrior');
+for (let i = 0; i < __pe.invSize; i++) __pe.inventory[i] = null;
+__pe.addItem('ironSword');
+const __slot = __pe.inventory.find((s) => s && s.id === 'ironSword');
+check('裝備入包帶有 roll', __slot && __slot.roll && __slot.roll.atk > 0);
+const __rolls = []; for (let i = 0; i < 40; i++) __rolls.push(rollEquip('darkBlade').atk);
+check('同名裝備數值會不同', new Set(__rolls).size > 1);
+const __pe2 = new Player(null, 'warrior');
+__pe2.equips.weapon = 'ironSword'; __pe2.equipRolls.weapon = { tier: 2, atk: 999 };
+check('equipBonus 採用 roll 值', __pe2.equipBonus('atk') >= 999);
+
+// 20. 消耗品快捷鍵（自訂 + 使用）
+const __pq = new Player(null, 'warrior');
+for (let i = 0; i < __pq.invSize; i++) __pq.inventory[i] = null;
+__pq.addItem('orangePotion', 2);
+__pq.setQuick(0, 'orangePotion');
+__pq.hp = 1;
+__pq.useQuick(0, { map: MapDB.meadow });
+check('快捷鍵使用指定消耗品', __pq.invCount('orangePotion') === 1 && __pq.hp > 1);
+
+// 21. 存檔含 roll 與快捷鍵（序列化往返）
+const __ser = __pq.serialize();
+check('serialize 含 equipRolls/quickSlots', !!__ser.equipRolls && Array.isArray(__ser.quickSlots));
+const __pq3 = new Player(__ser);
+check('讀檔還原快捷鍵', __pq3.quickSlots[0] === 'orangePotion');
+
+// 22. 多角色存檔欄位
+Game.curSlot = 1;
+Game.player = new Player(null, 'magician'); Game.mapId = 'forest'; Game.map = MapDB.forest;
+Game.player.x = 300; Game.player.y = 560;
+Game.save();
+const __m1 = Game.slotMeta(1);
+check('欄位1可讀存檔摘要', __m1 && __m1.job === 'magician');
+check('空欄位摘要為 null', Game.slotMeta(2) === null);
+Game.deleteSlot(1);
+check('刪除欄位後摘要為 null', Game.slotMeta(1) === null);
+
+// 23. 新視窗 / HUD 繪製不報錯（設定 / 放大地圖 / 存檔選擇）
+Game.curSlot = 0; Game.state = 'play'; Game.player = new Player(null, 'warrior');
+Game.loadMap('town', null, null);
+let __uiOk = true;
+try {
+  UI.show.settings = true; Game.draw(ctxStub_); UI.show.settings = false;
+  UI.mapExpanded = true; Game.draw(ctxStub_); UI.mapExpanded = false;
+  Game.state = 'slotSelect'; Game.draw(ctxStub_);
+  Game.state = 'title'; Game.draw(ctxStub_);
+  Game.state = 'play';
+} catch (e) { __uiOk = false; console.error(e); }
+check('設定/地圖/存檔選擇繪製不報錯', __uiOk);
+
+// 24. 視窗拖曳
+UI.closeAll(); UI.winPos = {}; UI.show.inv = true; UI.layout();
+const __r0 = UI.R.inv;
+Input.mouseX = __r0.x + 40; Input.mouseY = __r0.y + 8; Input.clicked = true; Input.mouseDown = true;
+UI.update(Game, 1 / 60);
+Input.mouseX = __r0.x + 140; Input.mouseY = __r0.y + 60;
+UI.update(Game, 1 / 60);
+Input.mouseDown = false; Input.clicked = false;
+UI.update(Game, 1 / 60);
+check('視窗可拖曳移動', UI.winPos.inv && Math.abs(UI.winPos.inv.x - (__r0.x + 100)) < 6);
+UI.closeAll();
 
 console.log(\`\\n煙霧測試結果：\${__pass} 通過，\${__fail} 失敗\`);
 if (__fail > 0) process.exit(1);

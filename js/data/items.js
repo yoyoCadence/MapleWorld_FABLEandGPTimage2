@@ -129,3 +129,37 @@ const WTYPE_NAMES = {
   sword: '劍', axe: '斧', mace: '鈍器', wand: '短杖', staff: '長杖', bow: '弓',
   crossbow: '弩', dagger: '短劍', claw: '拳爪', knuckle: '拳套', gun: '火槍',
 };
+
+// ════════════ 裝備隨機數值（每件同名裝備數值都不同，並有機率出現極品）════════════
+// 稀有度（tier）：機率越低、加成倍率越高。掉落/製作/任務/購買的裝備皆會 roll 一次。
+const EQUIP_TIERS = [
+  { name: '普通', color: '#cfd8e8', min: 0.82, max: 1.04, p: 0.60 },
+  { name: '優良', color: '#6fd3ff', min: 1.04, max: 1.20, p: 0.27 },
+  { name: '稀有', color: '#c79bff', min: 1.20, max: 1.42, p: 0.11 },
+  { name: '傳說', color: '#ffba5a', min: 1.42, max: 1.75, p: 0.02 },
+];
+const ROLL_FIELDS = ['atk', 'def', 'hp', 'mp', 'spd'];
+
+// 為某件裝備產生一組隨機數值；非裝備回傳 null。
+function rollEquip(id) {
+  const d = ItemDB[id];
+  if (!d || d.type !== 'equip') return null;
+  let r = Math.random(), tier = 0, acc = 0;
+  for (let i = 0; i < EQUIP_TIERS.length; i++) { acc += EQUIP_TIERS[i].p; if (r < acc) { tier = i; break; } }
+  const T = EQUIP_TIERS[tier];
+  const roll = { tier: tier };
+  for (const f of ROLL_FIELDS) {
+    if (d[f]) {
+      const mul = T.min + Math.random() * (T.max - T.min);
+      roll[f] = Math.max(1, Math.round(d[f] * mul));
+    }
+  }
+  return roll;
+}
+
+// 取得「實際數值」：有 roll 用 roll，否則回退基礎值（向下相容舊存檔與無 roll 的裝備）。
+function statVal(id, roll, field) {
+  if (roll && roll[field] != null) return roll[field];
+  const d = ItemDB[id];
+  return (d && d[field]) || 0;
+}

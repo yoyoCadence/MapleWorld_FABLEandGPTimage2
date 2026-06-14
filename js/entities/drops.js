@@ -8,6 +8,7 @@ class Drop {
     this.meso = data.meso || 0;   // > 0 表示楓幣
     this.itemId = data.itemId || null;
     this.qty = data.qty || 1;
+    this.roll = data.roll || null; // 裝備掉落時已決定的隨機數值
     this.age = 0;
     this.dead = false;
   }

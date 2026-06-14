@@ -39,19 +39,34 @@ const Sound = {
     this.stopBgm();
     this.bgmTheme = theme;
     this._startProc(theme);                       // 程序化合成（保底）
-    if (typeof Audio !== 'undefined') {           // 若有真實音檔則切換
-      try {
-        const a = new Audio(this.BGM_BASE + 'bgm_' + theme + '.mp3');
-        a.loop = true;
-        a.volume = this.muted ? 0 : 0.4;
-        const p = a.play();
-        if (p && p.then) {
-          p.then(() => {
-            this.bgmAudio = a;
-            if (this.bgmTimer) { clearInterval(this.bgmTimer); this.bgmTimer = null; }
-          }).catch(() => {});
-        }
-      } catch (e) { /* 用程序化即可 */ }
+    if (typeof Audio !== 'undefined') this._startAudioBgm(theme, ['mp3', 'wav']);
+  },
+  _startAudioBgm(theme, formats, index = 0) {
+    if (index >= formats.length) return;
+    try {
+      const bust = (typeof BUILD !== 'undefined') ? '?v=' + BUILD : '';
+      const a = new Audio(this.BGM_BASE + 'bgm_' + theme + '.' + formats[index] + bust);
+      let settled = false;
+      const useAudio = () => {
+        if (settled || this.bgmTheme !== theme) return;
+        settled = true;
+        this.bgmAudio = a;
+        if (this.bgmTimer) { clearInterval(this.bgmTimer); this.bgmTimer = null; }
+      };
+      const tryNext = () => {
+        if (settled || this.bgmTheme !== theme) return;
+        settled = true;
+        try { a.pause(); } catch (e) {}
+        this._startAudioBgm(theme, formats, index + 1);
+      };
+      a.loop = true;
+      a.volume = this.muted ? 0 : 0.4;
+      if (a.addEventListener) a.addEventListener('error', tryNext, { once: true });
+      const p = a.play();
+      if (p && p.then) p.then(useAudio).catch(tryNext);
+      else setTimeout(useAudio, 0);
+    } catch (e) {
+      this._startAudioBgm(theme, formats, index + 1);
     }
   },
   stopBgm() {

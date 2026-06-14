@@ -656,6 +656,66 @@ Added four systems. New data file: `js/data/quests.js` (NpcDB, QuestDB, CraftDB)
   dialogue window with quest list/accept/complete, craft window with recipes, and
   the HUD quest tracker.
 
+## NPC + BGM Asset Fill Pass (Codex, 2026-06-14)
+
+Filled the new RPG-system asset gaps from the previous section.
+
+### NPC sprites
+
+Created these image2-generated NPC sprites and exported them as transparent PNGs:
+
+- `assets/sprites/npc/npc-blacksmith.png`
+- `assets/sprites/npc/npc-elder.png`
+- `assets/sprites/npc/npc-hunter.png`
+- `assets/sprites/npc/npc-herbalist.png`
+
+Source image2 sheet used for the split:
+
+```text
+C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_026b3f84c90619d9016a2e9e244a0881918a35e34b9a00ae9c.png
+```
+
+Rebuild command:
+
+```powershell
+py scripts\split_npc_contact_sheet.py "C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_026b3f84c90619d9016a2e9e244a0881918a35e34b9a00ae9c.png"
+```
+
+Notes:
+
+- Output canvas is `120x180 RGBA`, transparent, bottom-aligned.
+- Runtime still draws NPCs at in-game height ~74px via `Sprites.drawNpc`.
+- Smoke test now draws merchant + blacksmith + elder + hunter + herbalist and
+  verifies the corresponding sprite paths are requested.
+
+### BGM audio fallback
+
+Created 7 lightweight loopable WAV tracks:
+
+- `assets/audio/bgm_meadow.wav`
+- `assets/audio/bgm_forest.wav`
+- `assets/audio/bgm_cave.wav`
+- `assets/audio/bgm_altar.wav`
+- `assets/audio/bgm_snow.wav`
+- `assets/audio/bgm_lava.wav`
+- `assets/audio/bgm_castle.wav`
+
+Rebuild command:
+
+```powershell
+py scripts\generate_bgm_assets.py
+```
+
+Implementation note:
+
+- `js/sound.js` now tries `assets/audio/bgm_<theme>.mp3` first and falls back
+  to `assets/audio/bgm_<theme>.wav`.
+- MP3 files were not generated because this Windows environment has no `ffmpeg`
+  or `lame`, and downloading `imageio-ffmpeg` failed with a local SSL certificate
+  verification error.
+- If a future agent has an MP3 encoder, export the same 7 filenames as
+  `bgm_<theme>.mp3`; no code change is needed because MP3 is already preferred.
+
 ## Recommended Next Steps
 
 The new animation sheets are functional and integrated, but most are generated from static PNGs. Good follow-up work:
@@ -666,3 +726,33 @@ The new animation sheets are functional and integrated, but most are generated f
 - Add projectile loop sheets, not just static projectile PNGs.
 - Add skill-specific impact style selection for every skill in `js/data/skills.js`.
 - Add a small visual preview page for browsing all sprite sheets.
+
+## UX / Systems Pass (2026-06-14)
+
+This pass added 14 gameplay/UX features requested by the player. All are wired and
+covered by `node tests/smoke.test.js` (99 checks passing). No NEW art assets are
+required by this pass -- the previously delivered NPC PNGs and BGM WAVs are now
+fully integrated.
+
+What changed (no assets needed):
+
+- Cache-busting: every <script> in index.html now has `?v=<BUILD>`, and dynamic
+  asset loads (sprites/sound) append `?v=<BUILD>` too. BUILD lives in js/config.js.
+  IMPORTANT: when you ship an update, bump BUILD in js/config.js AND the `?v=`
+  query strings in index.html (keep both identical) so players never get stale cache.
+  There is also a "Reload latest" button in the in-game Settings page.
+- Random equipment stats: every dropped/crafted/quest/bought equip rolls stats in
+  a range with 4 rarity tiers (normal/fine/rare/legendary). Inventory shows a
+  colored border for fine+; tooltips show the rolled values and the +/- difference
+  vs the currently equipped item. See `rollEquip`/`statVal` in js/data/items.js.
+- Multi-slot saves (3 slots) -> title now goes Title -> Slot Select -> (empty slot
+  picks a class) -> play. Settings page can return to title to switch character or
+  delete a save (with confirm). Legacy single-save is auto-migrated to slot 0.
+- Minimap top-right (click to enlarge), green EXP bar with %, draggable windows,
+  customizable consumable hotkeys (1/2/3), sell confirmation window, collapsible
+  quest tracker, basic per-job weapons sold in shop.
+
+Optional future art (still all have procedural/empty fallbacks, nothing is broken):
+
+- bgm_<theme>.mp3 x7 (MP3 is preferred over the existing WAVs if provided).
+- Hand-authored monster/skill sheets as noted in "Recommended Next Steps" above.

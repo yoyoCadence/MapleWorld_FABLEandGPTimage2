@@ -26,9 +26,11 @@ class Player {
     this.invSize = (save && save.invSize) || CONFIG.INV_SIZE;
     this.pickupCd = 0;
     this.inventory = new Array(this.invSize).fill(null);
-    this.equips = {};
-    for (const slot of EQUIP_SLOTS) this.equips[slot] = null;
+    this.equips = {};        // slot -> 道具 id（字串；維持與繪製程式相容）
+    this.equipRolls = {};    // slot -> 隨機數值物件（null = 用基礎值）
+    for (const slot of EQUIP_SLOTS) { this.equips[slot] = null; this.equipRolls[slot] = null; }
     this.equips.weapon = jd.startWeapon;
+    this.quickSlots = ['redPotion', 'bluePotion', null]; // 數字鍵 1/2/3 自訂消耗品快捷
 
     this.invinc = 0;
     this.gcd = 0;
@@ -58,7 +60,8 @@ class Player {
     let s = 0;
     for (const slot of EQUIP_SLOTS) {
       const id = this.equips[slot];
-      if (id && ItemDB[id] && ItemDB[id][field]) s += ItemDB[id][field];
+      if (!id || !ItemDB[id]) continue;
+      s += statVal(id, this.equipRolls[slot], field);
     }
     return s;
   }
@@ -198,8 +201,9 @@ class Player {
     for (const id of this.skillList()) {
       if (Input.pressed[SkillDB[id].code]) this.castSkill(id, game);
     }
-    if (Input.pressed['Digit1']) this.quickPotion(['redPotion', 'orangePotion', 'whitePotion', 'elixir', 'powerElixir']);
-    if (Input.pressed['Digit2']) this.quickPotion(['bluePotion', 'manaElixir', 'elixir', 'powerElixir']);
+    if (Input.pressed['Digit1']) this.useQuick(0, game);
+    if (Input.pressed['Digit2']) this.useQuick(1, game);
+    if (Input.pressed['Digit3']) this.useQuick(2, game);
     // 按住 Z 持續撿取
     if (Input.down['KeyZ'] && this.pickupCd <= 0) {
       this.pickup(game);
@@ -410,7 +414,8 @@ class Player {
   }
 
   // ── 背包 / 裝備 ──
-  addItem(id, qty) {
+  // roll：裝備的隨機數值（掉落時已決定）。未提供時，裝備會自動 roll 一組。
+  addItem(id, qty, roll) {
     qty = qty || 1;
     const d = ItemDB[id];
     if (!d) return false;
@@ -427,9 +432,14 @@ class Player {
     while (qty > 0) {
       const i = this.inventory.indexOf(null);
       if (i < 0) return false;
-      const put = d.type === 'use' ? Math.min(qty, d.maxStack) : 1;
-      this.inventory[i] = { id, qty: put };
-      qty -= put;
+      if (d.type === 'equip') {
+        this.inventory[i] = { id, qty: 1, roll: roll || rollEquip(id) };
+        qty -= 1;
+      } else {
+        const put = d.type === 'use' ? Math.min(qty, d.maxStack) : 1;
+        this.inventory[i] = { id, qty: put };
+        qty -= put;
+      }
     }
     return true;
   }
@@ -467,8 +477,10 @@ class Player {
         return;
       }
       const old = this.equips[d.slot];
+      const oldRoll = this.equipRolls[d.slot];
       this.equips[d.slot] = s.id;
-      this.inventory[i] = old ? { id: old, qty: 1 } : null;
+      this.equipRolls[d.slot] = s.roll || null;
+      this.inventory[i] = old ? { id: old, qty: 1, roll: oldRoll } : null;
       this.hp = Math.min(this.hp, this.maxHp);
       this.mp = Math.min(this.mp, this.maxMp);
       Sound.play('equip');
@@ -484,18 +496,37 @@ class Player {
       Sound.play('error');
       return;
     }
-    this.inventory[i] = { id, qty: 1 };
+    this.inventory[i] = { id, qty: 1, roll: this.equipRolls[slot] };
     this.equips[slot] = null;
+    this.equipRolls[slot] = null;
     this.hp = Math.min(this.hp, this.maxHp);
     this.mp = Math.min(this.mp, this.maxMp);
     Sound.play('equip');
   }
 
-  quickPotion(list) {
+  // ── 消耗品快捷鍵（1/2/3）──
+  // 已綁定 quickSlots[k] 就用該道具；未綁定則回退舊版分類（紅/藍藥水自動找最合適）。
+  useQuick(k, game) {
+    const bound = this.quickSlots[k];
+    if (bound) {
+      const i = this.inventory.findIndex((s) => s && s.id === bound);
+      if (i >= 0) { this.useSlot(i, game); return; }
+      Effects.spawnText(this.x, this.y - 70, `沒有${(ItemDB[bound] || {}).name || '道具'}`, '#ef9a9a');
+      Sound.play('error');
+      return;
+    }
+    const fallback = k === 1
+      ? ['bluePotion', 'manaElixir', 'elixir', 'powerElixir']
+      : ['redPotion', 'orangePotion', 'whitePotion', 'elixir', 'powerElixir'];
+    this.quickPotion(fallback, game);
+  }
+  setQuick(k, itemId) { this.quickSlots[k] = itemId; }
+
+  quickPotion(list, game) {
     for (const id of list) {
       const i = this.inventory.findIndex((s) => s && s.id === id);
       if (i >= 0) {
-        this.useSlot(i);
+        this.useSlot(i, game);
         return;
       }
     }
@@ -520,8 +551,10 @@ class Player {
       Effects.spawnText(best.x, best.y - 30, `+${best.meso} 楓幣`, '#ffd54f');
       Sound.play('meso');
       best.dead = true;
-    } else if (this.addItem(best.itemId, best.qty)) {
-      Effects.spawnText(best.x, best.y - 30, `獲得 ${ItemDB[best.itemId].name}${best.qty > 1 ? ' x' + best.qty : ''}`, '#fff');
+    } else if (this.addItem(best.itemId, best.qty, best.roll)) {
+      const tierName = best.roll && best.roll.tier ? `【${EQUIP_TIERS[best.roll.tier].name}】` : '';
+      const tierCol = best.roll && best.roll.tier ? EQUIP_TIERS[best.roll.tier].color : '#fff';
+      Effects.spawnText(best.x, best.y - 30, `獲得 ${tierName}${ItemDB[best.itemId].name}${best.qty > 1 ? ' x' + best.qty : ''}`, tierCol);
       Sound.play('pickup');
       best.dead = true;
     } else {
@@ -637,6 +670,7 @@ class Player {
       hp: Math.round(this.hp), mp: Math.round(this.mp),
       meso: this.meso, sp: this.sp, invSize: this.invSize,
       skills: this.skills, inventory: this.inventory, equips: this.equips,
+      equipRolls: this.equipRolls, quickSlots: this.quickSlots,
       quests: this.quests,
     };
   }
@@ -657,6 +691,12 @@ class Player {
     const eq = {};
     for (const slot of EQUIP_SLOTS) eq[slot] = null;
     this.equips = Object.assign(eq, s.equips || {});
+    const er = {};
+    for (const slot of EQUIP_SLOTS) er[slot] = null;
+    this.equipRolls = Object.assign(er, s.equipRolls || {});
+    if (Array.isArray(s.quickSlots)) {
+      this.quickSlots = [s.quickSlots[0] || null, s.quickSlots[1] || null, s.quickSlots[2] || null];
+    }
     this.hp = Math.min(s.hp || this.maxHp, this.maxHp);
     this.mp = Math.min(s.mp || this.maxMp, this.maxMp);
   }

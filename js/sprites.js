@@ -728,7 +728,8 @@ const Sprites = {
     if (!this._imageCache[path]) {
       const img = new Image();
       img.decoding = 'async';
-      img.src = path;
+      // 加版本參數做快取破壞（素材更新時也會重抓）；快取鍵仍用無參數的 path
+      img.src = (typeof BUILD !== 'undefined' && path.indexOf('?') < 0) ? path + '?v=' + BUILD : path;
       this._imageCache[path] = img;
     }
     return this._imageCache[path];

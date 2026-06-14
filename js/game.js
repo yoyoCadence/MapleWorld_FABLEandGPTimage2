@@ -12,8 +12,17 @@ const Game = {
   saveTimer: 0,
   hasSave: false,
   selJob: 0,
+  curSlot: 0,         // 目前使用中的存檔欄位
+  pendingSlot: 0,     // slotSelect 選到的空欄位 → 建立新角色後存入
+  selSlot: 0,         // slotSelect 畫面游標
+  confirmDelSlot: -1, // 刪除存檔二次確認的目標欄位
 
   init() {
+    this.migrateLegacy();
+    let last = 0;
+    try { last = parseInt(localStorage.getItem(CONFIG.SLOT_LAST) || '0', 10) || 0; } catch (e) {}
+    this.curSlot = Math.min(Math.max(last, 0), CONFIG.SLOT_COUNT - 1);
+    this.selSlot = this.curSlot;
     const save = this.loadSave();
     this.hasSave = !!save;
     this.player = new Player(save ? save.player : null);
@@ -24,42 +33,119 @@ const Game = {
       this.loadMap('meadow', null, null);
     }
     // 開發用：網址 #play 或 #play-forest 直接進入指定地圖（截圖/測試）
+    // 可加場景旗標 #play-town;inv / ;shop / ;settings / ;bigmap / ;stat / ;craft
     const hash = (typeof location !== 'undefined' && location.hash) || '';
-    const mm = hash.match(/^#play(?:-(\w+))?$/);
+    if (hash === '#slots') { this.state = 'slotSelect'; }
+    const mm = hash.match(/^#play(?:-(\w+))?(?:;(\w+))?$/);
     if (mm) {
       if (mm[1] && MapDB[mm[1]]) this.loadMap(mm[1], null, null);
       this.state = 'play';
+      const sc = mm[2];
+      if (sc === 'inv') { this.player.addItem('mapleSword'); this.player.addItem('dragonHelm'); this.player.addItem('windBoots'); UI.show.inv = true; }
+      else if (sc === 'shop') { UI.openShop(); }
+      else if (sc === 'settings') { UI.show.settings = true; }
+      else if (sc === 'bigmap') { UI.mapExpanded = true; }
+      else if (sc === 'stat') { UI.show.stat = true; }
+      else if (sc === 'craft') { UI.show.craft = true; }
+      else if (sc === 'sell') {
+        this.player.addItem('redPotion', 20);
+        UI.openShop(); UI.shopTab = 'sell';
+        UI.sellSel = { slot: this.player.inventory.findIndex((s) => s && s.id === 'redPotion'), qty: 5 };
+        UI.confirmSell = true;
+      }
+      else if (sc === 'difftip') {
+        this.player.addItem('mapleSword');   // 比目前木劍更強，tooltip 顯示 ▲ 差距
+        UI.show.inv = true;
+        if (typeof Input !== 'undefined') { Input.mouseX = 806; Input.mouseY = 152; }
+      }
     }
     Camera.snap(this.player, this.map);
   },
 
-  // ── 存檔 ──
-  loadSave() {
+  // ── 存檔（多角色欄位）──
+  slotKey(i) { return CONFIG.SLOT_PREFIX + i; },
+
+  // 把舊版單一存檔搬進欄位 0（只做一次）
+  migrateLegacy() {
     try {
+      if (localStorage.getItem(this.slotKey(0))) return;
       const raw = localStorage.getItem(CONFIG.SAVE_KEY);
+      if (raw) localStorage.setItem(this.slotKey(0), raw);
+    } catch (e) {}
+  },
+
+  loadSlot(i) {
+    try {
+      const raw = localStorage.getItem(this.slotKey(i));
       if (!raw) return null;
       const s = JSON.parse(raw);
       if (!s || s.v !== 1 || !s.player) return null;
       return s;
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
+  },
+
+  loadSave() { return this.loadSlot(this.curSlot); },   // 既有 API（測試/初始化用）
+
+  // 欄位摘要（給 slotSelect 畫面顯示）
+  slotMeta(i) {
+    const s = this.loadSlot(i);
+    if (!s) return null;
+    const p = s.player || {};
+    return {
+      job: p.job || 'warrior',
+      level: p.level || 1,
+      meso: p.meso || 0,
+      mapName: (MapDB[s.mapId] || {}).name || '未知之地',
+    };
   },
 
   save() {
     try {
-      localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify({
+      localStorage.setItem(this.slotKey(this.curSlot), JSON.stringify({
         v: 1,
         mapId: this.mapId,
         x: Math.round(this.player.x),
         y: Math.round(this.player.y),
         player: this.player.serialize(),
       }));
+      localStorage.setItem(CONFIG.SLOT_LAST, String(this.curSlot));
     } catch (e) { /* 隱私模式等情況忽略 */ }
   },
 
   clearSave() {
-    try { localStorage.removeItem(CONFIG.SAVE_KEY); } catch (e) {}
+    try { localStorage.removeItem(this.slotKey(this.curSlot)); } catch (e) {}
+  },
+  deleteSlot(i) {
+    try { localStorage.removeItem(this.slotKey(i)); } catch (e) {}
+  },
+
+  // 從 slotSelect 進入：有存檔→讀取續玩；空欄位→建立新角色
+  selectSlot(i) {
+    this.curSlot = i;
+    const save = this.loadSlot(i);
+    if (save) {
+      this.player = new Player(save.player);
+      this.hasSave = true;
+      const mid = (save.mapId && MapDB[save.mapId]) ? save.mapId : 'meadow';
+      this.loadMap(mid, null, save.mapId ? { x: save.x, y: save.y } : null);
+      Camera.snap(this.player, this.map);
+      try { localStorage.setItem(CONFIG.SLOT_LAST, String(i)); } catch (e) {}
+      this.state = 'play';
+      Effects.announce('歡迎回來，繼續你的冒險！', '#ffe082');
+    } else {
+      this.pendingSlot = i;
+      this.selJob = 0;
+      this.state = 'classSelect';
+    }
+  },
+
+  // 設定頁：回到標題的存檔清單（自動先存檔）
+  returnToTitle() {
+    if (this.state === 'play') this.save();
+    UI.closeAll();
+    this.selSlot = this.curSlot;
+    this.confirmDelSlot = -1;
+    this.state = 'slotSelect';
   },
 
   // ── 地圖 ──
@@ -149,7 +235,8 @@ const Game = {
       if (dr.meso) {
         this.drops.push(new Drop(m.x, m.y - m.h / 2, m.plat.y, { meso: Utils.randInt(dr.meso[0], dr.meso[1]) }));
       } else {
-        this.drops.push(new Drop(m.x, m.y - m.h / 2, m.plat.y, { itemId: dr.item, qty: dr.qty || 1 }));
+        const roll = (ItemDB[dr.item] && ItemDB[dr.item].type === 'equip') ? rollEquip(dr.item) : null;
+        this.drops.push(new Drop(m.x, m.y - m.h / 2, m.plat.y, { itemId: dr.item, qty: dr.qty || 1, roll }));
       }
     }
 
@@ -196,20 +283,39 @@ const Game = {
     if (this.state === 'title') {
       for (const m of this.monsters) m.update(dt, this);
       Effects.update(dt);
-      if (Input.pressed['Enter']) {
-        if (this.hasSave) {
-          this.state = 'play';
-          Effects.announce('歡迎回來，繼續你的冒險！', '#ffe082');
-        } else {
-          this.selJob = 0;
-          this.state = 'classSelect';
-        }
-      } else if (Input.pressed['KeyN'] && this.hasSave) {
-        this.clearSave();
-        this.hasSave = false;
-        this.selJob = 0;
-        this.state = 'classSelect';
+      if (Input.pressed['Enter'] || Input.pressed['Space'] || Input.clicked) {
+        this.selSlot = this.curSlot;
+        this.confirmDelSlot = -1;
+        this.state = 'slotSelect';
       }
+      return;
+    }
+
+    if (this.state === 'slotSelect') {
+      for (const m of this.monsters) m.update(dt, this);
+      Effects.update(dt);
+      const n = CONFIG.SLOT_COUNT;
+      if (Input.pressed['ArrowUp']) { this.selSlot = (this.selSlot + n - 1) % n; this.confirmDelSlot = -1; Sound.play('equip'); }
+      if (Input.pressed['ArrowDown']) { this.selSlot = (this.selSlot + 1) % n; this.confirmDelSlot = -1; Sound.play('equip'); }
+      if (Input.pressed['Escape']) { this.state = 'title'; return; }
+      // 滑鼠：點欄位讀取 / 點垃圾桶刪除（二次確認）
+      if (Input.clicked && UI.slotRects) {
+        for (let i = 0; i < (UI.slotDelRects || []).length; i++) {
+          if (UI.slotDelRects[i] && UI.inRect(UI.slotDelRects[i])) {
+            if (this.confirmDelSlot === i) { this.deleteSlot(i); this.confirmDelSlot = -1; Sound.play('error'); }
+            else { this.confirmDelSlot = i; Sound.play('equip'); }
+            return;
+          }
+        }
+        for (let i = 0; i < UI.slotRects.length; i++) {
+          if (UI.inRect(UI.slotRects[i])) { this.selSlot = i; this.selectSlot(i); return; }
+        }
+      }
+      if (Input.pressed['KeyD']) {
+        if (this.confirmDelSlot === this.selSlot) { this.deleteSlot(this.selSlot); this.confirmDelSlot = -1; Sound.play('error'); }
+        else if (this.slotMeta(this.selSlot)) { this.confirmDelSlot = this.selSlot; Sound.play('equip'); }
+      }
+      if (Input.pressed['Enter'] || Input.pressed['Space']) { this.selectSlot(this.selSlot); return; }
       return;
     }
 
@@ -218,13 +324,16 @@ const Game = {
       Effects.update(dt);
       if (Input.pressed['ArrowLeft']) { this.selJob = (this.selJob + JOB_ORDER.length - 1) % JOB_ORDER.length; Sound.play('equip'); }
       if (Input.pressed['ArrowRight']) { this.selJob = (this.selJob + 1) % JOB_ORDER.length; Sound.play('equip'); }
-      if (Input.pressed['Escape']) { this.state = 'title'; return; }
+      if (Input.pressed['Escape']) { this.state = 'slotSelect'; return; }
       if (Input.pressed['Enter'] || Input.pressed['Space']) {
         const job = JOB_ORDER[this.selJob];
+        this.curSlot = this.pendingSlot;
         this.player = new Player(null, job);
         this.loadMap('meadow', null, null);
         Camera.snap(this.player, this.map);
         this.state = 'play';
+        this.hasSave = true;
+        this.save();
         Effects.announce(`你成為了${JobDB[job].name}！冒險開始！`, '#ffe082');
       }
       return;
@@ -240,6 +349,8 @@ const Game = {
     // ── play ──
     UI.update(this, dt);
     const p = this.player;
+    // 設定 / 放大地圖開啟時暫停世界（避免在選單中被怪攻擊）
+    if (UI.show.settings || UI.mapExpanded) { Effects.update(dt); return; }
     p.update(dt, this);
     if (this.state !== 'play') return;
 
@@ -335,6 +446,7 @@ const Game = {
     UI.draw(ctx, this);
     Effects.drawScreen(ctx);
     if (this.state === 'title') UI.drawTitle(ctx, this);
+    if (this.state === 'slotSelect') UI.drawSlotSelect(ctx, this);
     if (this.state === 'classSelect') UI.drawClassSelect(ctx, this);
     if (this.state === 'dead') UI.drawDeath(ctx);
   },
