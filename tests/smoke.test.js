@@ -453,6 +453,21 @@ try {
 } catch (e) { __uiOk = false; console.error(e); }
 check('設定/地圖/存檔選擇繪製不報錯', __uiOk);
 
+// 24b. 材料會堆疊（修正賣出數量永遠是 1 的問題）
+const __pm = new Player(null, 'warrior');
+for (let i = 0; i < __pm.invSize; i++) __pm.inventory[i] = null;
+for (let i = 0; i < 15; i++) __pm.addItem('slimeGel', 1);  // 逐顆撿取
+const __matStacks = __pm.inventory.filter((s) => s && s.id === 'slimeGel');
+check('材料逐顆撿取會堆疊成單格', __matStacks.length === 1 && __matStacks[0].qty === 15);
+// 舊存檔散落的單顆材料 → compactInventory 合併
+const __pm2 = new Player(null, 'warrior');
+for (let i = 0; i < __pm2.invSize; i++) __pm2.inventory[i] = null;
+__pm2.inventory[0] = { id: 'fireOre', qty: 1 };
+__pm2.inventory[1] = { id: 'fireOre', qty: 1 };
+__pm2.inventory[2] = { id: 'fireOre', qty: 1 };
+__pm2.compactInventory();
+check('compactInventory 合併散落材料', __pm2.invCount('fireOre') === 3 && __pm2.inventory.filter((s) => s && s.id === 'fireOre').length === 1);
+
 // 24. 視窗拖曳
 UI.closeAll(); UI.winPos = {}; UI.show.inv = true; UI.layout();
 const __r0 = UI.R.inv;

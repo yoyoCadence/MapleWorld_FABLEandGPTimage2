@@ -28,7 +28,7 @@ const CONFIG = {
 
 // 版本號：每次更新都會變動。index.html 的 ?v= 與素材載入皆用它做快取破壞，
 // 確保玩家一定載到最新版（GitHub Pages 等靜態主機常吃舊快取）。
-const BUILD = '20260614b';
+const BUILD = '20260614c';
 
 // 升到下一級所需經驗
 function expNeed(level) {

@@ -53,6 +53,11 @@ const Game = {
         UI.sellSel = { slot: this.player.inventory.findIndex((s) => s && s.id === 'redPotion'), qty: 5 };
         UI.confirmSell = true;
       }
+      else if (sc === 'sellmat') {
+        this.player.addItem('slimeGel', 15);
+        UI.openShop(); UI.shopTab = 'sell';
+        UI.sellSel = { slot: this.player.inventory.findIndex((s) => s && s.id === 'slimeGel'), qty: 5 };
+      }
       else if (sc === 'difftip') {
         this.player.addItem('mapleSword');   // 比目前木劍更強，tooltip 顯示 ▲ 差距
         UI.show.inv = true;

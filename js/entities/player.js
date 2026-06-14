@@ -419,7 +419,8 @@ class Player {
     qty = qty || 1;
     const d = ItemDB[id];
     if (!d) return false;
-    if (d.type === 'use') {
+    const stackable = d.type === 'use' || d.type === 'material';  // 消耗品與材料都會堆疊
+    if (stackable) {
       for (const s of this.inventory) {
         if (s && s.id === id && s.qty < d.maxStack) {
           const can = Math.min(qty, d.maxStack - s.qty);
@@ -436,12 +437,31 @@ class Player {
         this.inventory[i] = { id, qty: 1, roll: roll || rollEquip(id) };
         qty -= 1;
       } else {
-        const put = d.type === 'use' ? Math.min(qty, d.maxStack) : 1;
+        const put = Math.min(qty, d.maxStack);
         this.inventory[i] = { id, qty: put };
         qty -= put;
       }
     }
     return true;
+  }
+
+  // 合併同類可堆疊道具到較前的格子（修正舊存檔散落的單顆材料；保留位置不重排）
+  compactInventory() {
+    for (let i = 0; i < this.inventory.length; i++) {
+      const a = this.inventory[i];
+      if (!a) continue;
+      const d = ItemDB[a.id];
+      if (!d || (d.type !== 'use' && d.type !== 'material')) continue;
+      for (let j = i + 1; j < this.inventory.length; j++) {
+        if (a.qty >= d.maxStack) break;
+        const b = this.inventory[j];
+        if (!b || b.id !== a.id) continue;
+        const move = Math.min(b.qty, d.maxStack - a.qty);
+        a.qty += move;
+        b.qty -= move;
+        if (b.qty <= 0) this.inventory[j] = null;
+      }
+    }
   }
 
   useSlot(i, game) {
@@ -688,6 +708,7 @@ class Player {
     const inv = new Array(this.invSize).fill(null);
     (s.inventory || []).slice(0, this.invSize).forEach((v, i) => { inv[i] = v; });
     this.inventory = inv;
+    this.compactInventory();  // 合併舊存檔中散落的單顆材料
     const eq = {};
     for (const slot of EQUIP_SLOTS) eq[slot] = null;
     this.equips = Object.assign(eq, s.equips || {});
