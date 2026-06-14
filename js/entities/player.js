@@ -1,6 +1,6 @@
 // 玩家：移動 / 跳躍 / 爬繩 / 戰鬥 / 背包裝備 / 升級
 class Player {
-  constructor(save, job) {
+  constructor(save, job, name) {
     this.x = 120;
     this.y = 560;
     this.vx = 0;
@@ -14,12 +14,15 @@ class Player {
 
     this.job = (save && save.job) || job || 'warrior';
     const jd = JobDB[this.job] || JobDB.warrior;
+    this.name = (save && save.name) || name || (typeof CONFIG !== 'undefined' && CONFIG.PLAYER_NAME) || '冒險者';
+    this.jobRank = (save && save.jobRank) || 1;   // 轉職階級：1 一轉 / 2 二轉 / 3 三轉
     this.level = 1;
     this.exp = 0;
     this.meso = 0;
     this.sp = 0;
     this.skills = {};
     this.skills[jd.skills[0]] = 1;   // 起始技能
+    this.skillBar = (save && save.skillBar) ? save.skillBar.slice() : this._defaultSkillBar();
     this.skillCds = {};
     this.buffs = {};                 // id -> { atk, def, speed, until }
     this.quests = {};                // questId -> { s:'active'|'done', k:擊殺數 }
@@ -54,7 +57,58 @@ class Player {
 
   // ── 屬性（基礎值 × 職業修正 + 裝備加成 × buff）──
   get jobDef() { return JobDB[this.job] || JobDB.warrior; }
-  skillList() { return this.jobDef.skills; }
+  get rankName() { const jd = this.jobDef; return (jd.ranks && jd.ranks[this.jobRank - 1]) || jd.name; }
+
+  // 技能視窗顯示用：全部職業技能（含尚未轉職而鎖住的）
+  skillList() {
+    const jd = this.jobDef;
+    return (jd.skills || []).concat(jd.skills2 || []).concat(jd.skills3 || []);
+  }
+  skillRank(id) { return (SkillDB[id] && SkillDB[id].rank) || 1; }
+  skillUnlocked(id) {
+    const d = SkillDB[id];
+    return !!d && this.jobRank >= this.skillRank(id) && this.level >= (d.reqLv || 1);
+  }
+  // 預設快捷列：把目前轉職階可用的技能依序放進 6 格
+  _defaultSkillBar() {
+    const jd = this.jobDef;
+    let avail = (jd.skills || []).slice();
+    if (this.jobRank >= 2) avail = avail.concat(jd.skills2 || []);
+    if (this.jobRank >= 3) avail = avail.concat(jd.skills3 || []);
+    const bar = avail.slice(0, 6);
+    while (bar.length < 6) bar.push(null);
+    return bar;
+  }
+  setSkillBar(slot, id) {
+    if (slot < 0 || slot >= this.skillBar.length) return;
+    // 同一技能若已在別格，先移除（避免重複）
+    const dup = this.skillBar.indexOf(id);
+    if (id && dup >= 0 && dup !== slot) this.skillBar[dup] = null;
+    this.skillBar[slot] = id;
+  }
+
+  // ── 轉職 ──
+  canAdvance() {
+    if (this.jobRank === 1 && this.level >= 30) return 2;
+    if (this.jobRank === 2 && this.level >= 70) return 3;
+    return 0;
+  }
+  advance() {
+    const to = this.canAdvance();
+    if (!to) return false;
+    this.jobRank = to;
+    this.sp += 5;
+    const jd = this.jobDef;
+    const newSkills = to === 2 ? (jd.skills2 || []) : (jd.skills3 || []);
+    for (const sid of newSkills) {
+      if (this.skillBar.includes(sid)) continue;
+      const empty = this.skillBar.indexOf(null);
+      if (empty >= 0) this.skillBar[empty] = sid;
+    }
+    Effects.announce(`🎉 轉職成功！你成為了 ${this.rankName}（獲得 5 SP）`, '#ffe082');
+    Sound.play('levelup');
+    return true;
+  }
 
   equipBonus(field) {
     let s = 0;
@@ -198,8 +252,8 @@ class Player {
 
     // 攻擊 / 技能 / 藥水 / 撿取
     if (Input.pressed['KeyX']) this.tryBasic(game);
-    for (const id of this.skillList()) {
-      if (Input.pressed[SkillDB[id].code]) this.castSkill(id, game);
+    for (let i = 0; i < SKILL_BAR_KEYS.length; i++) {
+      if (Input.pressed[SKILL_BAR_KEYS[i]] && this.skillBar[i]) this.castSkill(this.skillBar[i], game);
     }
     if (Input.pressed['Digit1']) this.useQuick(0, game);
     if (Input.pressed['Digit2']) this.useQuick(1, game);
@@ -294,6 +348,11 @@ class Player {
 
   castSkill(id, game) {
     const d = SkillDB[id];
+    if (!d) return;
+    if (this.jobRank < (d.rank || 1)) {
+      Effects.spawnText(this.x, this.y - 70, '需先轉職', '#90a4ae');
+      return;
+    }
     const lv = this.skills[id] || 0;
     if (!lv) {
       Effects.spawnText(this.x, this.y - 70, '尚未學習', '#90a4ae');
@@ -598,6 +657,7 @@ class Player {
     const d = SkillDB[id];
     const lv = this.skills[id] || 0;
     if (this.sp <= 0 || lv >= d.maxLv || this.level < d.reqLv) return;
+    if (this.jobRank < (d.rank || 1)) return;   // 未轉職不能學
     this.skills[id] = lv + 1;
     this.sp--;
     Sound.play('equip');
@@ -696,7 +756,7 @@ class Player {
   serialize() {
     return {
       v: 2,
-      job: this.job,
+      job: this.job, name: this.name, jobRank: this.jobRank, skillBar: this.skillBar,
       level: this.level, exp: this.exp,
       hp: Math.round(this.hp), mp: Math.round(this.mp),
       meso: this.meso, sp: this.sp, invSize: this.invSize,
@@ -708,12 +768,16 @@ class Player {
 
   applySave(s) {
     this.job = s.job || this.job || 'warrior';
+    this.name = s.name || this.name || (typeof CONFIG !== 'undefined' && CONFIG.PLAYER_NAME) || '冒險者';
+    this.jobRank = s.jobRank || 1;
     this.level = s.level || 1;
     this.exp = s.exp || 0;
     this.meso = s.meso || 0;
     this.sp = s.sp || 0;
     this.skills = s.skills || {};
     if (!Object.keys(this.skills).length) this.skills[this.jobDef.skills[0]] = 1;
+    this.skillBar = (Array.isArray(s.skillBar) && s.skillBar.length) ? s.skillBar.slice(0, 6) : this._defaultSkillBar();
+    while (this.skillBar.length < 6) this.skillBar.push(null);
     this.quests = s.quests || {};
     this.invSize = Math.min(CONFIG.INV_MAX, Math.max(CONFIG.INV_SIZE, s.invSize || CONFIG.INV_SIZE));
     const inv = new Array(this.invSize).fill(null);

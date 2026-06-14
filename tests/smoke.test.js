@@ -141,9 +141,14 @@ frames(1);
 check('空欄位進入選職畫面', Game.state === 'classSelect');
 press('Enter');
 frames(1);
-check('選職後進入遊戲', Game.state === 'play');
+check('選職後進入命名畫面', Game.state === 'nameInput');
+Input.textValue = '小楓';
+press('Enter');
+frames(1);
+check('命名後進入遊戲', Game.state === 'play');
 check('預設職業為劍士', Game.player.job === 'warrior');
-check('劍士技能列表正確', Game.player.skillList().join(',') === 'powerStrike,spinSlash,energyWave,heal');
+check('自訂名字生效', Game.player.name === '小楓');
+check('劍士一轉技能列表正確', Game.player.skillList().slice(0, 4).join(',') === 'powerStrike,spinSlash,energyWave,heal');
 
 // 3. 移動與跳躍（暫時無敵，避免漫遊小怪碰撞干擾跳躍判定）
 Game.player.invinc = 100;
@@ -265,7 +270,8 @@ check('職業起始武器與技能皆存在', jobOk);
 let classOk = true;
 for (const j of JOB_ORDER) {
   const pl = new Player(null, j);
-  if (pl.skillList().length !== 4) classOk = false;
+  if (pl.skillList().length < 4) classOk = false;
+  if (pl.skillBar.filter((s) => s).length < 1) classOk = false;
   if (!(pl.maxHp > 0 && pl.maxMp > 0 && pl.atk > 0 && pl.def > 0)) classOk = false;
 }
 check('五職業皆可建立且屬性正常', classOk);
@@ -527,6 +533,43 @@ UI.show.shop = false;
 ps.addItem('petFox'); const __petIdx = ps.inventory.findIndex((s) => s && s.id === 'petFox');
 ps.useSlot(__petIdx, Game);
 check('使用寵物道具更換寵物', Game.pet && Game.pet.type === 'fox' && ps.invCount('petFox') === 0);
+
+// 26. 轉職 + 技能擴充
+const __pa = new Player(null, 'warrior');
+check('一轉技能可施放、二三轉鎖住', __pa.skillUnlocked('powerStrike') && !__pa.skillUnlocked('rage') && !__pa.skillUnlocked('crusherCombo'));
+check('未達等級不可轉職', __pa.canAdvance() === 0);
+__pa.level = 30;
+check('Lv30 可一轉→二轉', __pa.canAdvance() === 2);
+__pa.advance();
+check('轉職後 rank=2、二轉技能解鎖', __pa.jobRank === 2 && __pa.skillUnlocked('rage'));
+check('二轉技能自動進快捷列', __pa.skillBar.includes('rage') || __pa.skillBar.includes('groundSmash'));
+__pa.level = 70; __pa.advance();
+check('Lv70 可二轉→三轉', __pa.jobRank === 3 && __pa.skillUnlocked('crusherCombo'));
+check('每職業技能數 >= 8', __pa.skillList().length >= 8);
+// 各職業二三轉技能皆存在於 SkillDB
+let advOk = true;
+for (const j of JOB_ORDER) {
+  const jd = JobDB[j];
+  for (const sid of (jd.skills2 || []).concat(jd.skills3 || [])) if (!SkillDB[sid]) advOk = false;
+}
+check('所有轉職技能皆存在於 SkillDB', advOk);
+
+// 27. 技能快捷列拖曳綁定
+const __pb = new Player(null, 'warrior');
+__pb.jobRank = 2; __pb.skills.rage = 1;
+UI.setQuickContext = null;
+UI.dragGhost = { kind: 'skill', id: 'rage' };
+UI.R = UI.R || {};
+UI.R.skillBar = [{ x: 0, y: 0, w: 40, h: 40, k: 4 }];
+Input.mouseX = 10; Input.mouseY = 10;
+UI._dropGhost({ player: __pb });
+check('拖曳技能到快捷列綁定按鍵', __pb.skillBar[4] === 'rage');
+
+// 28. 存檔含 name / jobRank / skillBar
+const __ser2 = __pa.serialize();
+check('serialize 含 name/jobRank/skillBar', __ser2.name != null && __ser2.jobRank === 3 && Array.isArray(__ser2.skillBar));
+const __pc = new Player(__ser2);
+check('讀檔還原轉職階與技能列', __pc.jobRank === 3 && __pc.skillList().length >= 8);
 
 console.log(\`\\n煙霧測試結果：\${__pass} 通過，\${__fail} 失敗\`);
 if (__fail > 0) process.exit(1);

@@ -14,7 +14,9 @@ const UI = {
   shopId: 'merchant', // 目前商店（決定販售清單）
   dlgNpc: null,     // 對話中的 NPC id
   winPos: {},       // 視窗拖曳後的位置覆寫：{ inv:{x,y}, shop:{x,y}, ... }
-  drag: null,       // 拖曳中：{ win, dx, dy }
+  drag: null,       // 視窗拖曳中：{ win, dx, dy }
+  press: null,      // 按住可拖曳元件（道具/技能）等待判定拖曳或點擊
+  dragGhost: null,  // 拖曳中的元件：{ kind:'skill'|'item', id, slot }
   mapExpanded: false, // 小地圖是否放大
   questCollapsed: false,
   assignQuick: -1,  // 正在指定快捷鍵的欄位（-1 = 無）
@@ -186,15 +188,19 @@ const UI = {
       }
     }
     if (this.show.skill) {
-      const r = this._win('skill', 28, 70, 384, 346);
+      const list = this._skillList();
+      const rowH = 56;
+      const r = this._win('skill', 28, 56, 392, 56 + list.length * rowH + 10);
       R.skill = r;
       R.skillClose = { x: r.x + r.w - 26, y: r.y + 7, w: 19, h: 19 };
       R.skillRows = [];
       R.skillPlus = [];
-      this._skillList().forEach((id, i) => {
-        const ry = r.y + 38 + i * 74;
-        R.skillRows.push({ x: r.x + 10, y: ry, w: r.w - 20, h: 68 });
-        R.skillPlus.push({ x: r.x + r.w - 46, y: ry + 21, w: 26, h: 26 });
+      R.skillBadges = [];
+      list.forEach((id, i) => {
+        const ry = r.y + 40 + i * rowH;
+        R.skillRows.push({ x: r.x + 10, y: ry, w: r.w - 20, h: rowH - 6 });
+        R.skillBadges.push({ x: r.x + 16, y: ry + 6, w: 40, h: 40 });   // 可拖曳的技能徽章
+        R.skillPlus.push({ x: r.x + r.w - 46, y: ry + 12, w: 26, h: 26 });
       });
     }
     if (this.show.stat) {
@@ -314,10 +320,13 @@ const UI = {
         const ry = top + i * 66;
         R.dlgQuests.push({ qid, x: r.x + 14, y: ry, w: r.w - 28, h: 60, btn: { x: r.x + r.w - 96, y: ry + 17, w: 78, h: 28 } });
       });
+      // 轉職按鈕（村長）
+      const def = NpcDB[this.dlgNpc];
+      if (def && def.advance) R.dlgAdvance = { x: r.x + r.w / 2 - 90, y: r.y + r.h - 44, w: 180, h: 32 };
     }
     // ── 設定視窗 ──
     if (this.show.settings) {
-      const r = this._win('settings', 372, 130, 280, 348);
+      const r = this._win('settings', 352, 86, 320, 470);
       R.settings = r;
       R.settingsClose = { x: r.x + r.w - 26, y: r.y + 7, w: 19, h: 19 };
       const bx = r.x + 24, bw = r.w - 48; let by = r.y + 52;
@@ -334,10 +343,17 @@ const UI = {
       R.bigMap = { x: (CONFIG.CANVAS_W - w) / 2, y: (CONFIG.CANVAS_H - h) / 2, w, h };
       R.bigMapClose = { x: R.bigMap.x + w - 26, y: R.bigMap.y + 7, w: 19, h: 19 };
     }
+    // ── 技能快捷列（HUD 底部中央 6 格，可拖曳技能進來綁定按鍵）──
+    R.skillBar = [];
+    const ssz = 40, sgap = 5, scount = SKILL_BAR_KEYS.length;
+    const sTotal = scount * ssz + (scount - 1) * sgap;
+    const sX = Math.round((CONFIG.CANVAS_W - sTotal) / 2) + 64;
+    const sY = CONFIG.CANVAS_H - 61;
+    for (let i = 0; i < scount; i++) R.skillBar.push({ x: sX + i * (ssz + sgap), y: sY, w: ssz, h: ssz, k: i });
     // ── 消耗品快捷欄（HUD 底部右側 3 格）──
     R.quick = [];
-    const qsz = 38, qy = CONFIG.CANVAS_H - 52;
-    for (let i = 0; i < 3; i++) R.quick.push({ x: 980 - (2 - i) * (qsz + 6), y: qy, w: qsz, h: qsz, k: i });
+    const qsz = 40, qy = CONFIG.CANVAS_H - 61;
+    for (let i = 0; i < 3; i++) R.quick.push({ x: 1010 - (2 - i) * (qsz + 5) - qsz, y: qy, w: qsz, h: qsz, k: i });
     // ── 任務追蹤摺疊鈕 ──
     R.questToggle = { x: 12, y: 44, w: 210, h: 20 };
     this.R = R;
@@ -367,6 +383,76 @@ const UI = {
       }
     }
     return false;
+  },
+
+  // 滑鼠按下處是否為可拖曳元件（技能徽章 / 背包道具）
+  _draggableAt(game) {
+    if (this.show.settings || this.mapExpanded) return null;
+    const R = this.R, p = game.player;
+    if (this.show.skill && R.skillBadges) {
+      const list = this._skillList();
+      for (let i = 0; i < R.skillBadges.length; i++) {
+        if (this.inRect(R.skillBadges[i])) {
+          const id = list[i];
+          if (id && p.skillUnlocked(id)) return { x: Input.mouseX, y: Input.mouseY, ghost: { kind: 'skill', id }, click: { type: 'skill' } };
+          return null;
+        }
+      }
+    }
+    if (this.show.inv && R.invSlots) {
+      for (let i = 0; i < R.invSlots.length; i++) {
+        if (!this.inRect(R.invSlots[i])) continue;
+        const idx = R.invCells[i];
+        if (idx == null || idx < 0) return null;
+        const it = p.inventory[idx];
+        if (!it) return null;
+        return { x: Input.mouseX, y: Input.mouseY, ghost: { kind: 'item', id: it.id, slot: idx }, click: { type: 'invslot', idx } };
+      }
+    }
+    return null;
+  },
+
+  // 純點擊（沒有拖曳）時對來源元件做的動作
+  _pressClick(game, pr) {
+    const p = game.player, c = pr.click;
+    if (c.type === 'invslot') {
+      const it = p.inventory[c.idx];
+      if (!it) return;
+      if (this.assignQuick >= 0) {
+        if (ItemDB[it.id] && ItemDB[it.id].type === 'use') {
+          p.setQuick(this.assignQuick, it.id);
+          Effects.announce(`已將 ${ItemDB[it.id].name} 設為快捷鍵 ${this.assignQuick + 1}`, '#a5d6a7'); Sound.play('equip');
+        } else { Effects.announce('只能指定消耗品', '#ef9a9a'); Sound.play('error'); }
+        this.assignQuick = -1; return;
+      }
+      p.useSlot(c.idx, game);
+    }
+    // 技能點擊：不做事（拖曳到技能列才綁定）
+  },
+
+  // 放開拖曳：判定落點並綁定
+  _dropGhost(game) {
+    const p = game.player, g = this.dragGhost, R = this.R;
+    if (g.kind === 'skill') {
+      for (const s of R.skillBar) {
+        if (this.inRect(s)) {
+          p.setSkillBar(s.k, g.id); Sound.play('equip');
+          Effects.announce(`${SKILL_BAR_LABELS[s.k]} 鍵 → ${SkillDB[g.id].name}`, '#a5d6a7');
+          return;
+        }
+      }
+    } else if (g.kind === 'item') {
+      const d = ItemDB[g.id];
+      if (d && d.type === 'use') {
+        for (const q of R.quick) {
+          if (this.inRect(q)) {
+            p.setQuick(q.k, g.id); Sound.play('equip');
+            Effects.announce(`已將 ${d.name} 設為快捷鍵 ${q.k + 1}`, '#a5d6a7');
+            return;
+          }
+        }
+      }
+    }
   },
 
   update(game, dt) {
@@ -403,6 +489,27 @@ const UI = {
       return;
     }
     if (Input.clicked && this._tryStartDrag()) { Input.clicked = false; return; }
+
+    // ── 元件拖曳：道具→消耗品快捷欄 / 技能→技能快捷列 ──
+    if (this.dragGhost) {
+      if (!Input.mouseDown) { this._dropGhost(game); this.dragGhost = null; this.press = null; }
+      Input.clicked = false;
+      return;
+    }
+    if (this.press) {
+      if (Input.mouseDown) {
+        if (Math.abs(Input.mouseX - this.press.x) + Math.abs(Input.mouseY - this.press.y) > 6) {
+          this.dragGhost = Object.assign({}, this.press.ghost);
+        }
+        Input.clicked = false; return;
+      }
+      const pr = this.press; this.press = null; this._pressClick(game, pr); Input.clicked = false; return;
+    }
+    if (Input.clicked) {
+      const src = this._draggableAt(game);
+      if (src) { this.press = src; Input.clicked = false; return; }
+    }
+
     if (!Input.clicked) return;
 
     const p = game.player;
@@ -550,6 +657,11 @@ const UI = {
     if (R.dlg && this.inRect(R.dlg)) {
       Input.clicked = false;
       if (this.inRect(R.dlgClose)) { this.show.dialogue = false; return; }
+      if (R.dlgAdvance && this.inRect(R.dlgAdvance)) {
+        if (p.canAdvance()) p.advance();
+        else Effects.announce(p.jobRank >= 3 ? '已是最高轉職' : `尚未達到轉職等級（需 Lv.${p.jobRank === 1 ? 30 : 70}）`, '#ef9a9a');
+        return;
+      }
       for (const row of R.dlgQuests) {
         if (this.inRect(row.btn)) {
           const st = this._questStatus(row.qid, p);
@@ -633,6 +745,7 @@ const UI = {
     if (this.show.settings) this.drawSettings(ctx, game);
     if (this.mapExpanded) this.drawBigMap(ctx, game);
     this.drawTooltip(ctx, p);
+    this._drawDragGhost(ctx, p);
   },
 
   // ══════════════════ 奇幻風格元件 ══════════════════
@@ -1275,6 +1388,12 @@ const UI = {
         ctx.fillText(lbl, row.btn.x + row.btn.w / 2, row.btn.y + 19);
       }
     }
+    // 轉職按鈕
+    if (this.R.dlgAdvance) {
+      const adv = p.canAdvance();
+      const label = adv ? `✦ 轉職為 ${p.jobDef.ranks[adv - 1]}` : (p.jobRank >= 3 ? '已達最高轉職' : `轉職（需 Lv.${p.jobRank === 1 ? 30 : 70}）`);
+      this._btn(ctx, this.R.dlgAdvance, label, !!adv, adv ? 'green' : 'default');
+    }
   },
 
   drawQuestTracker(ctx, p) {
@@ -1315,13 +1434,18 @@ const UI = {
 
   drawSkill(ctx, p) {
     const r = this.R.skill;
-    this.chrome(ctx, r, `✦ ${p.jobDef.name}技能 [K]　SP：${p.sp}`, this.R.skillClose);
+    this.chrome(ctx, r, `✦ ${p.rankName}技能 [K]　SP：${p.sp}`, this.R.skillClose);
+    ctx.textAlign = 'center';
+    ctx.font = '10px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#8fa3bd';
+    ctx.fillText('拖曳技能圖示到下方快捷列即可綁定按鍵', r.x + r.w / 2, r.y + 34);
     this._skillList().forEach((id, i) => {
       const d = SkillDB[id];
       if (!this.R.skillRows[i]) return;
       const lv = p.skills[id] || 0;
       const row = this.R.skillRows[i];
-      const unlocked = p.level >= d.reqLv;
+      const rankOk = p.jobRank >= (d.rank || 1);
+      const unlocked = rankOk && p.level >= d.reqLv;
       const rg = ctx.createLinearGradient(0, row.y, 0, row.y + row.h);
       rg.addColorStop(0, lv > 0 ? 'rgba(86,118,222,0.22)' : 'rgba(255,255,255,0.045)');
       rg.addColorStop(1, lv > 0 ? 'rgba(56,76,160,0.12)' : 'rgba(255,255,255,0.02)');
@@ -1332,35 +1456,31 @@ const UI = {
       ctx.lineWidth = 1.2;
       Utils.rr(ctx, row.x, row.y, row.w, row.h, 9);
       ctx.stroke();
-      // 技能徽章（金環 + 漸層 + 快捷鍵字母）
-      const mx = row.x + 26, my = row.y + 34;
-      const ig = ctx.createRadialGradient(mx - 4, my - 6, 2, mx, my, 19);
-      ig.addColorStop(0, unlocked ? '#7aa2ec' : '#5c5c6a');
-      ig.addColorStop(1, unlocked ? '#2c4a9e' : '#3a3a46');
-      ctx.fillStyle = ig;
-      ctx.beginPath();
-      ctx.arc(mx, my, 18, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = unlocked ? 'rgba(232,196,110,0.9)' : 'rgba(130,130,150,0.5)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(mx, my, 18, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = unlocked ? '#fff' : '#9a9aaa';
-      ctx.font = 'bold 14px Verdana';
-      ctx.textAlign = 'center';
-      ctx.fillText(d.key, mx, my + 5);
+      // 技能圖示徽章（可拖曳）
+      const bd = this.R.skillBadges[i];
+      ctx.globalAlpha = unlocked ? 1 : 0.4;
+      this._skillIcon(ctx, id, bd.x, bd.y, bd.w);
+      ctx.globalAlpha = 1;
+      // 已綁定到哪個快捷鍵
+      const barSlot = p.skillBar.indexOf(id);
+      if (barSlot >= 0) {
+        ctx.fillStyle = 'rgba(255,213,79,0.9)';
+        Utils.rr(ctx, bd.x - 2, bd.y - 2, 16, 14, 3); ctx.fill();
+        ctx.fillStyle = '#2a2410'; ctx.font = 'bold 10px Verdana'; ctx.textAlign = 'center';
+        ctx.fillText(SKILL_BAR_LABELS[barSlot], bd.x + 6, bd.y + 9);
+      }
       // 文字
       ctx.textAlign = 'left';
       ctx.font = 'bold 14px "Microsoft JhengHei", sans-serif';
       ctx.fillStyle = unlocked ? '#ffeec2' : '#8a8a99';
-      ctx.fillText(`${d.name}　Lv.${lv}/${d.maxLv}`, row.x + 52, row.y + 22);
+      ctx.fillText(`${d.name}　Lv.${lv}/${d.maxLv}`, row.x + 64, row.y + 20);
       ctx.font = '11px "Microsoft JhengHei", sans-serif';
       ctx.fillStyle = unlocked ? '#a8bcd8' : '#70707f';
-      ctx.fillText(unlocked ? d.desc(Math.max(1, lv)) : `🔒 角色 Lv.${d.reqLv} 解鎖`, row.x + 52, row.y + 42);
-      if (lv > 0) {
+      const lockMsg = !rankOk ? `🔒 需${d.rank === 2 ? '二轉 (Lv.30)' : '三轉 (Lv.70)'}` : `🔒 角色 Lv.${d.reqLv} 解鎖`;
+      ctx.fillText(unlocked ? d.desc(Math.max(1, lv)) : lockMsg, row.x + 64, row.y + 38);
+      if (lv > 0 && row.h >= 56) {
         ctx.fillStyle = '#8fd8a0';
-        ctx.fillText(`MP 消耗 ${d.mpCost(lv)}　冷卻 ${d.cd}s`, row.x + 52, row.y + 60);
+        ctx.fillText(`MP ${d.mpCost(lv)}　冷卻 ${d.cd}s`, row.x + 64, row.y + 52);
       }
       // 加點按鈕（有 ui_btn_plus.png 則貼圖：第 0 格停用、第 1 格可用；否則程序化）
       const can = p.sp > 0 && lv < d.maxLv && unlocked;
@@ -1396,8 +1516,8 @@ const UI = {
     this.chrome(ctx, r, '👤 角色 [P]', this.R.statClose);
     const need = expNeed(p.level);
     const rows = [
-      ['名稱', CONFIG.PLAYER_NAME],
-      ['職業', p.jobDef.name],
+      ['名稱', p.name || CONFIG.PLAYER_NAME],
+      ['職業', `${p.rankName}（${p.jobRank} 轉）`],
       ['等級', `Lv.${p.level}`],
       ['經驗值', `${((p.exp / need) * 100).toFixed(1)}%`],
       ['攻擊力', p.atk],
@@ -1556,27 +1676,28 @@ const UI = {
   drawHUD(ctx, game) {
     const p = game.player;
     const W = CONFIG.CANVAS_W, H = CONFIG.CANVAS_H;
+    const PH = 74;   // 底部面板高度
     // 底部面板
-    const hg = ctx.createLinearGradient(0, H - 58, 0, H);
+    const hg = ctx.createLinearGradient(0, H - PH, 0, H);
     hg.addColorStop(0, 'rgba(22,26,50,0.92)');
     hg.addColorStop(1, 'rgba(10,11,24,0.95)');
     ctx.fillStyle = hg;
-    ctx.fillRect(0, H - 58, W, 58);
+    ctx.fillRect(0, H - PH, W, PH);
     // 金色頂緣雙線
     ctx.fillStyle = 'rgba(216,178,94,0.85)';
-    ctx.fillRect(0, H - 58, W, 1.6);
+    ctx.fillRect(0, H - PH, W, 1.6);
     ctx.fillStyle = 'rgba(216,178,94,0.28)';
-    ctx.fillRect(0, H - 55, W, 1);
+    ctx.fillRect(0, H - PH + 3, W, 1);
     // 中央頂緣鑽飾
     ctx.fillStyle = '#d8b25e';
     ctx.save();
-    ctx.translate(W / 2, H - 57);
+    ctx.translate(W / 2, H - PH + 1);
     ctx.rotate(Math.PI / 4);
     ctx.fillRect(-3, -3, 6, 6);
     ctx.restore();
 
     // 等級徽章（金環雙圈 + 星星）
-    const bx = 34, by = H - 31;
+    const bx = 34, by = H - 40;
     const eg = ctx.createRadialGradient(bx - 5, by - 7, 2, bx, by, 20);
     eg.addColorStop(0, '#5a82d8');
     eg.addColorStop(1, '#22366e');
@@ -1605,37 +1726,33 @@ const UI = {
     ctx.textAlign = 'center';
     ctx.fillText(`Lv.${p.level}`, bx, by + 8);
 
-    // 名牌
+    // 名牌：角色名 + 職業（轉職階）。不顯示金幣（金幣在背包/商店/角色視窗可見）
     ctx.textAlign = 'left';
-    ctx.font = 'bold 13px "Microsoft JhengHei", sans-serif';
+    ctx.font = 'bold 14px "Microsoft JhengHei", sans-serif';
     ctx.fillStyle = '#ffeec2';
     ctx.shadowColor = 'rgba(0,0,0,0.7)';
     ctx.shadowBlur = 3;
-    ctx.fillText(CONFIG.PLAYER_NAME, 64, H - 38);
+    ctx.fillText(p.name || CONFIG.PLAYER_NAME, 60, H - 46);
     ctx.shadowBlur = 0;
-    // 楓幣
-    Sprites.drawItemIcon(ctx, 'meso', 72, H - 20, 17);
-    ctx.font = 'bold 12px Verdana';
-    ctx.fillStyle = '#ffd87a';
-    ctx.textAlign = 'left';
-    ctx.fillText(Utils.fmt(p.meso), 85, H - 16);
+    ctx.font = '12px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = p.jobDef.color;
+    ctx.fillText(p.rankName, 60, H - 28);
 
     // HP / MP 華麗條
-    this.ornateBar(ctx, 240, H - 52, 250, 15, p.hp / p.maxHp,
+    this.ornateBar(ctx, 188, H - 62, 232, 15, p.hp / p.maxHp,
       ['#ff9a7a', '#e8472f', '#8e1e12'], `HP ${Math.ceil(p.hp)} / ${p.maxHp}`, 'heart');
-    this.ornateBar(ctx, 240, H - 33, 250, 15, p.mp / p.maxMp,
+    this.ornateBar(ctx, 188, H - 43, 232, 15, p.mp / p.maxMp,
       ['#7ec8f8', '#2a7fd4', '#143e7e'], `MP ${Math.ceil(p.mp)} / ${p.maxMp}`, 'drop');
+    // SP 提示
+    if (p.sp > 0) {
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 11px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = '#ffd87a';
+      ctx.fillText(`SP ${p.sp}（按 K 加點）`, 188, H - 24);
+    }
 
-    // 快捷鍵提示（依職業技能動態顯示）
-    ctx.textAlign = 'left';
-    ctx.font = '11px "Microsoft JhengHei", sans-serif';
-    ctx.fillStyle = '#8fa3bd';
-    const skHint = p.skillList().map((id) => `${SkillDB[id].key} ${SkillDB[id].name}`).join('　');
-    ctx.fillText(`X 攻擊　${skHint}　Space 跳躍`, 510, H - 46);
-    ctx.fillStyle = p.sp > 0 ? '#ffd87a' : '#8fa3bd';
-    ctx.fillText(`Z 撿取　↑ 商店/傳送　I 背包　K 技能${p.sp > 0 ? `(SP:${p.sp}!)` : ''}　P 角色　M 音效　Esc 設定`, 510, H - 31);
-
-    // 消耗品快捷欄（1/2/3）
+    // 技能快捷列（中央）+ 消耗品快捷欄（右側）
+    this._drawSkillBar(ctx, p);
     this._drawQuickSlots(ctx, p);
 
     // EXP（最底：像血條的綠色長條 + 置中百分比）
@@ -1699,6 +1816,66 @@ const UI = {
       ctx.fillStyle = '#ffd87a';
       ctx.fillText(q.k + 1, q.x + 3, q.y + 11);
     }
+  },
+
+  // 技能圖示（有 assets/ui/skills/<id>.png 則用，否則程序化徽章）
+  _skillIcon(ctx, id, x, y, sz) {
+    const d = SkillDB[id];
+    if (!d) return;
+    const img = Sprites._loadImage(Sprites.ASSET_BASE + 'ui/skills/' + id + '.png');
+    if (Sprites._readyImage(img)) { ctx.imageSmoothingEnabled = true; ctx.drawImage(img, x, y, sz, sz); return; }
+    const col = { melee: '#e8704a', aoe: '#c79bff', projectile: '#5aa0ff', heal: '#69d98a', buff: '#ffce5a' }[d.type] || '#8a8aa0';
+    const cx = x + sz / 2, cy = y + sz / 2;
+    const g = ctx.createRadialGradient(cx - 3, cy - 4, 2, cx, cy, sz / 2);
+    g.addColorStop(0, this._lift(col)); g.addColorStop(1, col);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, sz / 2 - 1, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,235,170,0.7)'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(cx, cy, sz / 2 - 1, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    ctx.font = `bold ${Math.round(sz * 0.5)}px "Microsoft JhengHei", sans-serif`;
+    ctx.fillText(d.name[0], cx, cy + sz * 0.18);
+  },
+
+  // 技能快捷列（HUD 中央 6 格，按鍵標籤在上方）
+  _drawSkillBar(ctx, p) {
+    for (const s of this.R.skillBar) {
+      this._slot(ctx, s, this.inRect(s));
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 10px Verdana';
+      ctx.fillStyle = '#cdd8ee';
+      ctx.fillText(SKILL_BAR_LABELS[s.k], s.x + s.w / 2, s.y - 3);
+      const id = p.skillBar[s.k];
+      if (id && SkillDB[id]) {
+        const lv = p.skills[id] || 0;
+        const usable = p.skillUnlocked(id) && lv > 0;
+        ctx.globalAlpha = usable ? 1 : 0.4;
+        this._skillIcon(ctx, id, s.x + 4, s.y + 4, s.w - 8);
+        ctx.globalAlpha = 1;
+        if (lv > 0) {
+          ctx.font = 'bold 9px Verdana'; ctx.textAlign = 'right';
+          ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+          ctx.strokeText(lv, s.x + s.w - 3, s.y + s.h - 3);
+          ctx.fillStyle = '#ffeec2'; ctx.fillText(lv, s.x + s.w - 3, s.y + s.h - 3);
+        }
+        const cd = p.skillCds[id] || 0;
+        if (cd > 0 && SkillDB[id].cd) {
+          const fr = Math.min(1, cd / SkillDB[id].cd);
+          ctx.fillStyle = 'rgba(10,12,24,0.62)';
+          ctx.fillRect(s.x + 2, s.y + s.h - 2 - (s.h - 4) * fr, s.w - 4, (s.h - 4) * fr);
+        }
+      }
+    }
+  },
+
+  // 拖曳中的元件跟著游標
+  _drawDragGhost(ctx, p) {
+    const g = this.dragGhost;
+    if (!g) return;
+    ctx.globalAlpha = 0.85;
+    if (g.kind === 'skill') this._skillIcon(ctx, g.id, Input.mouseX - 18, Input.mouseY - 18, 36);
+    else if (g.kind === 'item') Sprites.drawItemIcon(ctx, g.id, Input.mouseX, Input.mouseY, 36);
+    ctx.globalAlpha = 1;
   },
 
   drawBossBar(ctx, game) {
@@ -2102,10 +2279,59 @@ const UI = {
     this._btn(ctx, this.R.setReload, '🔄 重新載入最新版', true, 'blue');
     this._btn(ctx, this.R.setTitle, '🏰 返回標題 / 切換角色', true, 'default');
     this._btn(ctx, this.R.setDelete, this.confirmReset > 0 ? '⚠ 再點一次確認刪除！' : '🗑 刪除此存檔重新開始', true, 'red');
+    // 操作說明
+    let ky = this.R.setDelete.y + 54;
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 12px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#ffe9b0';
+    ctx.fillText('— 操作說明 —', r.x + 20, ky); ky += 18;
+    ctx.font = '11px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#a8bcd8';
+    const help = [
+      '← →  移動　　Space  跳躍（↓+Space 下跳）',
+      '↑  爬繩 / 傳送 / 與 NPC 對話',
+      'X  普通攻擊　　A S D F G H  技能快捷',
+      'Z  撿取（按住連撿）　　1 2 3  消耗品快捷',
+      'I 背包　K 技能　P 角色　T 任務收合　M 音效',
+      '拖曳：技能→技能列、消耗品→消耗欄綁定按鍵',
+    ];
+    for (const line of help) { ctx.fillText(line, r.x + 20, ky); ky += 17; }
     ctx.textAlign = 'center';
     ctx.font = '10px Verdana';
     ctx.fillStyle = '#7a8398';
-    ctx.fillText('版本 ' + (typeof BUILD !== 'undefined' ? BUILD : '?') + '　（自動存檔進行中）', r.x + r.w / 2, r.y + r.h - 10);
+    ctx.fillText('版本 ' + (typeof BUILD !== 'undefined' ? BUILD : '?') + '　（全程自動存檔）', r.x + r.w / 2, r.y + r.h - 8);
+  },
+
+  drawNameInput(ctx, game) {
+    const W = CONFIG.CANVAS_W, H = CONFIG.CANVAS_H;
+    ctx.fillStyle = 'rgba(8,10,26,0.9)';
+    ctx.fillRect(0, 0, W, H);
+    const jd = JobDB[JOB_ORDER[game.selJob]];
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 30px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#ffe9b0';
+    ctx.fillText('為你的角色命名', W / 2, 180);
+    ctx.font = '15px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = jd.color;
+    ctx.fillText(`職業：${jd.name}`, W / 2, 214);
+    // 輸入框
+    const bw = 420, bh = 56, bx = W / 2 - bw / 2, by = 248;
+    this.panel(ctx, bx, by, bw, bh, 10);
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 24px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#ffffff';
+    const txt = (typeof Input !== 'undefined' ? Input.textValue : '') || '';
+    ctx.fillText(txt, bx + 20, by + 37);
+    // 游標閃爍
+    if (Math.floor(game.time * 2) % 2 === 0) {
+      const cw = ctx.measureText(txt).width;
+      ctx.fillStyle = '#ffd54f';
+      ctx.fillRect(bx + 22 + cw, by + 14, 2, 28);
+    }
+    ctx.textAlign = 'center';
+    ctx.font = '13px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#a8bcd8';
+    ctx.fillText('輸入名字（最多 12 字）　Enter 確認　Esc 返回', W / 2, by + bh + 34);
   },
 
   // ══════════════════ 存檔選擇（標題 → 選角色）══════════════════
@@ -2166,10 +2392,12 @@ const UI = {
         ctx.textAlign = 'left';
         ctx.font = 'bold 17px "Microsoft JhengHei", sans-serif';
         ctx.fillStyle = '#ffeec2';
-        ctx.fillText(`${jd.name}　Lv.${meta.level}`, r.x + 96, r.y + 44);
+        ctx.fillText(`${meta.name}`, r.x + 96, r.y + 40);
         ctx.font = '13px "Microsoft JhengHei", sans-serif';
+        ctx.fillStyle = '#cdd8ee';
+        ctx.fillText(`${meta.rankName}　Lv.${meta.level}`, r.x + 96, r.y + 62);
         ctx.fillStyle = '#a8bcd8';
-        ctx.fillText(`📍 ${meta.mapName}　💰 ${Utils.fmt(meta.meso)} 楓幣`, r.x + 96, r.y + 70);
+        ctx.fillText(`📍 ${meta.mapName}　💰 ${Utils.fmt(meta.meso)}`, r.x + 96, r.y + 82);
         // 刪除鈕
         const db = this.slotDelRects[i];
         const delConfirm = game.confirmDelSlot === i;

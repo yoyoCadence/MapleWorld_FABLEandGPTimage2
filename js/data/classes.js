@@ -14,6 +14,9 @@ const JobDB = {
     weaponTypes: ['sword', 'axe', 'mace'],
     startWeapon: 'woodSword',
     skills: ['powerStrike', 'spinSlash', 'energyWave', 'heal'],
+    skills2: ['rage', 'groundSmash'],
+    skills3: ['crusherCombo', 'heroWill'],
+    ranks: ['劍士', '騎士', '劍聖'],
   },
   magician: {
     name: '法師', short: '法', color: '#7a5cff',
@@ -24,6 +27,9 @@ const JobDB = {
     weaponTypes: ['wand', 'staff'],
     startWeapon: 'beginnerWand',
     skills: ['fireball', 'iceSpike', 'thunderBolt', 'healAura'],
+    skills2: ['frostNova', 'magicGuard'],
+    skills3: ['meteor', 'arcaneBlast'],
+    ranks: ['法師', '巫師', '大魔導士'],
   },
   archer: {
     name: '弓箭手', short: '弓', color: '#3fae5a',
@@ -34,6 +40,9 @@ const JobDB = {
     weaponTypes: ['bow', 'crossbow'],
     startWeapon: 'beginnerBow',
     skills: ['powerShot', 'arrowRain', 'pierceArrow', 'eagleEye'],
+    skills2: ['tripleShot', 'evasion'],
+    skills3: ['meteorArrow', 'phoenixStrike'],
+    ranks: ['弓箭手', '遊俠', '神射手'],
   },
   thief: {
     name: '盜賊', short: '盜', color: '#9b59b6',
@@ -43,6 +52,9 @@ const JobDB = {
     weaponTypes: ['dagger', 'claw'],
     startWeapon: 'beginnerDagger',
     skills: ['luckySeven', 'doubleStab', 'shadowFlurry', 'hasteBuff'],
+    skills2: ['tripleThrow', 'smokeBomb'],
+    skills3: ['assassinate', 'shadowStorm'],
+    ranks: ['盜賊', '刺客', '夜影'],
   },
   pirate: {
     name: '海盜', short: '海', color: '#e67e22',
@@ -52,6 +64,9 @@ const JobDB = {
     weaponTypes: ['knuckle', 'gun'],
     startWeapon: 'beginnerKnuckle',
     skills: ['knucklePunch', 'whirlKick', 'cannonBlast', 'battleRage'],
+    skills2: ['dragonStrike', 'cannonBarrage'],
+    skills3: ['octopus', 'fistFury'],
+    ranks: ['海盜', '船長', '海皇'],
   },
 };
 

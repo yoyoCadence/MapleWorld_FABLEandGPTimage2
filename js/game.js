@@ -63,7 +63,10 @@ const Game = {
         UI.show.inv = true;
         if (typeof Input !== 'undefined') { Input.mouseX = 806; Input.mouseY = 152; }
       }
+      else if (sc === 'skill') { this.player.level = 70; this.player.jobRank = 3; this.player.sp = 10; UI.show.skill = true; }
+      else if (sc === 'elder') { this.player.level = 35; UI.show.dialogue = true; UI.dlgNpc = 'elder'; }
     }
+    if (hash === '#name') { this.state = 'classSelect'; }
     Camera.snap(this.player, this.map);
   },
 
@@ -96,8 +99,12 @@ const Game = {
     const s = this.loadSlot(i);
     if (!s) return null;
     const p = s.player || {};
+    const jd = JobDB[p.job] || JobDB.warrior;
+    const rank = p.jobRank || 1;
     return {
       job: p.job || 'warrior',
+      name: p.name || (jd.name + '勇者'),
+      rankName: (jd.ranks && jd.ranks[rank - 1]) || jd.name,
       level: p.level || 1,
       meso: p.meso || 0,
       mapName: (MapDB[s.mapId] || {}).name || '未知之地',
@@ -331,15 +338,31 @@ const Game = {
       if (Input.pressed['ArrowRight']) { this.selJob = (this.selJob + 1) % JOB_ORDER.length; Sound.play('equip'); }
       if (Input.pressed['Escape']) { this.state = 'slotSelect'; return; }
       if (Input.pressed['Enter'] || Input.pressed['Space']) {
+        // 進入命名畫面
+        Input.textActive = true;
+        Input.textValue = JobDB[JOB_ORDER[this.selJob]].name + '勇者';
+        this.state = 'nameInput';
+        Sound.play('equip');
+      }
+      return;
+    }
+
+    if (this.state === 'nameInput') {
+      for (const m of this.monsters) m.update(dt, this);
+      Effects.update(dt);
+      if (Input.pressed['Escape']) { Input.textActive = false; this.state = 'classSelect'; return; }
+      if (Input.pressed['Enter']) {
         const job = JOB_ORDER[this.selJob];
+        const name = (Input.textValue || '').trim() || (JobDB[job].name + '勇者');
+        Input.textActive = false;
         this.curSlot = this.pendingSlot;
-        this.player = new Player(null, job);
+        this.player = new Player(null, job, name);
         this.loadMap('meadow', null, null);
         Camera.snap(this.player, this.map);
         this.state = 'play';
         this.hasSave = true;
         this.save();
-        Effects.announce(`你成為了${JobDB[job].name}！冒險開始！`, '#ffe082');
+        Effects.announce(`${name} 踏上了冒險旅程！`, '#ffe082');
       }
       return;
     }
@@ -453,6 +476,7 @@ const Game = {
     if (this.state === 'title') UI.drawTitle(ctx, this);
     if (this.state === 'slotSelect') UI.drawSlotSelect(ctx, this);
     if (this.state === 'classSelect') UI.drawClassSelect(ctx, this);
+    if (this.state === 'nameInput') UI.drawNameInput(ctx, this);
     if (this.state === 'dead') UI.drawDeath(ctx);
   },
 };

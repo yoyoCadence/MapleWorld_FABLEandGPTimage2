@@ -17,8 +17,21 @@ const Input = {
     'Digit1', 'Digit2', 'Digit3', 'Enter', 'Escape',
   ]),
 
+  textActive: false,   // 文字輸入模式（如創角輸入名字）
+  textValue: '',
+
   init(canvas) {
     window.addEventListener('keydown', (e) => {
+      // 文字輸入模式：攔截可見字元與退格，但保留 Enter/Escape 給狀態機
+      if (this.textActive) {
+        if (e.key === 'Backspace') { this.textValue = this.textValue.slice(0, -1); e.preventDefault(); }
+        else if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+          if (this.textValue.length < 12) this.textValue += e.key;
+          e.preventDefault();
+        }
+        if (e.code === 'Enter' || e.code === 'Escape') { if (!e.repeat) this.pressed[e.code] = true; }
+        return;
+      }
       if (this._prevented.has(e.code)) e.preventDefault();
       if (!e.repeat) this.pressed[e.code] = true;
       this.down[e.code] = true;
