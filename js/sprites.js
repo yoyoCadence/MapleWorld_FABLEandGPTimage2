@@ -1417,6 +1417,17 @@ const Sprites = {
   drawItemIcon(ctx, id, cx, cy, s) {
     ctx.save();
     ctx.translate(cx, cy);
+    // 專屬 PNG 圖示優先（assets/ui/items/<id>.png；楓幣用 ui/icon_meso.png），缺檔則用程序化
+    const iconPath = id === 'meso'
+      ? this.ASSET_BASE + 'ui/icon_meso.png'
+      : this.ASSET_BASE + 'ui/items/' + id + '.png';
+    const iconImg = this._loadImage(iconPath);
+    if (this._readyImage(iconImg)) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(iconImg, -s / 2, -s / 2, s, s);
+      ctx.restore();
+      return;
+    }
     if (id === 'meso') {
       // 楓幣：浮雕楓葉金幣
       const g = ctx.createRadialGradient(-s * 0.1, -s * 0.1, s * 0.04, 0, 0, s * 0.34);

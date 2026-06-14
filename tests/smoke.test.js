@@ -99,7 +99,7 @@ check('背景 PNG 素材載入', __loadedImages.includes('assets/backgrounds/mea
 check('怪物 PNG 素材載入', __loadedImages.includes('assets/sprites/mob_blue_snail.png'));
 check('主角 PNG 素材載入', __loadedImages.includes('assets/sprites/player/hero-adventurer.png'));
 Sprites.drawItemIcon(ctxStub_, 'woodSword', 0, 0, 32);
-check('武器 PNG 素材載入', __loadedImages.includes('assets/sprites/weapons/weapon_wood_sword.png'));
+check('道具圖示 PNG 載入', __loadedImages.includes('assets/ui/items/woodSword.png'));
 Effects.slash(Game.player.x, Game.player.y - 28, 1, 1);
 Effects.drawWorld(ctxStub_);
 check('斬擊 PNG 素材載入', __loadedImages.includes('assets/sprites/fx/slash/sheet-transparent.png'));
@@ -281,6 +281,12 @@ check('所有道具圖示繪製不報錯', iconOk);
 let csOk = true;
 try { Game.state = 'classSelect'; Game.selJob = 3; Game.draw(ctxStub_); } catch (e) { csOk = false; console.error(e); }
 check('選職畫面繪製不報錯', csOk);
+
+// UI 皮膚與道具圖示素材已接線載入
+check('UI 面板素材載入', __loadedImages.includes('assets/ui/ui_panel.png'));
+check('UI 格子素材載入', __loadedImages.includes('assets/ui/ui_slot.png'));
+check('UI 標題列素材載入', __loadedImages.includes('assets/ui/ui_titlebar.png'));
+check('楓幣圖示素材載入', __loadedImages.includes('assets/ui/icon_meso.png'));
 
 console.log(\`\\n煙霧測試結果：\${__pass} 通過，\${__fail} 失敗\`);
 if (__fail > 0) process.exit(1);

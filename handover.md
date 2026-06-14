@@ -188,16 +188,57 @@ throneRoom), and fixed issues.
   arcane styles by projectile style; boss projectiles use fire/arcane).
 - `node tests\smoke.test.js` -> 54 passed, 0 failed.
 
-### Notes (not bugs, optional follow-ups)
-- Item icons (`assets/ui/items/*.png`, 85) and UI frames (`assets/ui/*.png`) were
-  generated but are NOT wired into the runtime. The game still uses procedural
-  item icons and a procedural HUD. The generic-type icons (rings/capes/materials)
-  are plain colored gems, visually about the same as the procedural fallback, so
-  wiring them gives little benefit and would also require updating the smoke
-  test's weapon-icon assertion. Left unwired on purpose; can wire on request.
-- Pre-existing cosmetic mismatch (NOT from this handover): the monster named
-  "green slime" uses a purple sprite (`mob_bubbling.png`, unchanged from the
-  original repo). Rename or recolor if desired.
+### Notes (follow-ups) -> RESOLVED in the Wiring Pass below
+- Item icons + UI frames were generated but not wired -> now wired (see Wiring Pass).
+- Green-slime purple sprite -> recolored to green (see Wiring Pass).
+
+## Wiring Pass (Claude, 2026-06-14)
+
+Per user request, wired the remaining generated assets into the runtime and fixed
+the green-slime color. All changes have procedural fallbacks (missing PNG -> old
+look), so nothing breaks if a file is absent.
+
+### Item icons (now wired)
+- `js/sprites.js drawItemIcon()` now prefers `assets/ui/items/<id>.png`
+  (and `assets/ui/icon_meso.png` for meso), falling back to the procedural icon.
+- All 85 item ids have a matching PNG, so inventory / equip / HUD now show the
+  authored icons.
+
+### UI skin frames (now wired in `js/ui.js`, with fallback)
+- `ui_panel.png`   -> all windows / tooltips / map-name / boss bar (9-slice, corner 16).
+- `ui_titlebar.png`-> window title bar.
+- `ui_btn_close.png`-> window close button.
+- `ui_btn_plus.png`-> skill add-point button (2 frames: left=disabled, right=enabled).
+- `ui_slot.png`    -> inventory + equip slot background.
+- `icon_meso.png`  -> meso coin icon (via drawItemIcon('meso')).
+- `ui_cursor.png`  -> custom cursor via `css/style.css` (#game canvas).
+
+### Green slime color fix
+- `scripts/recolor_slime.py` hue-shifts the slime art from purple to green
+  (the monster is named "green slime"). Recolored in place:
+  - `assets/sprites/mob_bubbling.png`
+  - `assets/sprites/monsters/anim/mob_slime_idle.png`
+  - `assets/sprites/monsters/anim/mob_slime_hit.png`
+  Re-run with `py scripts/recolor_slime.py [degrees]` (default -160).
+
+### Assets present but intentionally NOT wired
+- `assets/ui/ui_bar_hp.png`, `ui_bar_mp.png`, `ui_bar_exp.png`: these are solid
+  pre-rendered bars, but the HUD bars are dynamic-fill (ratio + gloss + tick
+  marks + icon badge) and the procedural version looks better than a clipped
+  solid bar. Left on the procedural bars to avoid a visual regression. Can wire
+  as a clipped fill on request.
+
+### Verification
+- Smoke test: 58 passed, 0 failed (added checks for ui_panel / ui_slot /
+  ui_titlebar / icon_meso load + item-icon load).
+- Headless browser preview of all three windows (inventory / skill / character)
+  confirms panel skin, slots, item icons, and + buttons render correctly; meadow
+  confirms the slime is now green and the HUD meso icon loads.
+
+### Nothing missing
+- All item ids (85/85) have icons; all referenced UI files exist; per-class hero
+  PNGs (6), weapon PNGs, monster sheets, projectile PNGs, impact/explosion FX all
+  present. No missing-asset gaps found in this pass.
 
 ## Recommended Next Steps
 

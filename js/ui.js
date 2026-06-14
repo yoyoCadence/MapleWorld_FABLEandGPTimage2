@@ -13,6 +13,30 @@ const UI = {
     return (typeof Game !== 'undefined' && Game.player) ? Game.player.skillList() : SKILL_ORDER;
   },
 
+  // ── UI 皮膚素材（缺檔自動回退程序化繪製）──
+  _uiImg(name) { return Sprites._loadImage(Sprites.ASSET_BASE + 'ui/' + name); },
+  _uiReady(img) { return Sprites._readyImage(img); },
+  _nineSlice(ctx, img, x, y, w, h, c) {
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const cx = Math.min(c, Math.floor(w / 2)), cy = Math.min(c, Math.floor(h / 2));
+    const mw = iw - 2 * c, mh = ih - 2 * c;
+    const dmw = w - 2 * cx, dmh = h - 2 * cy;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(img, 0, 0, c, c, x, y, cx, cy);
+    ctx.drawImage(img, iw - c, 0, c, c, x + w - cx, y, cx, cy);
+    ctx.drawImage(img, 0, ih - c, c, c, x, y + h - cy, cx, cy);
+    ctx.drawImage(img, iw - c, ih - c, c, c, x + w - cx, y + h - cy, cx, cy);
+    if (dmw > 0) {
+      ctx.drawImage(img, c, 0, mw, c, x + cx, y, dmw, cy);
+      ctx.drawImage(img, c, ih - c, mw, c, x + cx, y + h - cy, dmw, cy);
+    }
+    if (dmh > 0) {
+      ctx.drawImage(img, 0, c, c, mh, x, y + cy, cx, dmh);
+      ctx.drawImage(img, iw - c, c, c, mh, x + w - cx, y + cy, cx, dmh);
+    }
+    if (dmw > 0 && dmh > 0) ctx.drawImage(img, c, c, mw, mh, x + cx, y + cy, dmw, dmh);
+  },
+
   layout() {
     const R = {};
     if (this.show.inv) {
@@ -110,8 +134,10 @@ const UI = {
     return g;
   },
 
-  // 鍍金奇幻面板
+  // 鍍金奇幻面板（有 ui_panel.png 則用九宮格貼圖，否則程序化）
   panel(ctx, x, y, w, h, r) {
+    const img = this._uiImg('ui_panel.png');
+    if (this._uiReady(img)) { this._nineSlice(ctx, img, x, y, w, h, 16); return; }
     r = r || 10;
     const bg = ctx.createLinearGradient(0, y, 0, y + h);
     bg.addColorStop(0, 'rgba(26,30,56,0.94)');
@@ -140,19 +166,25 @@ const UI = {
 
   chrome(ctx, r, title, closeRect) {
     this.panel(ctx, r.x, r.y, r.w, r.h);
-    // 標題帶
-    const tg = ctx.createLinearGradient(0, r.y + 2, 0, r.y + 30);
-    tg.addColorStop(0, 'rgba(96,124,220,0.32)');
-    tg.addColorStop(1, 'rgba(60,80,170,0.12)');
-    ctx.fillStyle = tg;
-    Utils.rr(ctx, r.x + 3, r.y + 3, r.w - 6, 27, 7);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(216,178,94,0.55)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(r.x + 10, r.y + 30.5);
-    ctx.lineTo(r.x + r.w - 10, r.y + 30.5);
-    ctx.stroke();
+    // 標題帶（有 ui_titlebar.png 則貼圖，否則程序化漸層）
+    const tbar = this._uiImg('ui_titlebar.png');
+    if (this._uiReady(tbar)) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(tbar, r.x + 3, r.y + 3, r.w - 6, 27);
+    } else {
+      const tg = ctx.createLinearGradient(0, r.y + 2, 0, r.y + 30);
+      tg.addColorStop(0, 'rgba(96,124,220,0.32)');
+      tg.addColorStop(1, 'rgba(60,80,170,0.12)');
+      ctx.fillStyle = tg;
+      Utils.rr(ctx, r.x + 3, r.y + 3, r.w - 6, 27, 7);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(216,178,94,0.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(r.x + 10, r.y + 30.5);
+      ctx.lineTo(r.x + r.w - 10, r.y + 30.5);
+      ctx.stroke();
+    }
     ctx.font = 'bold 14px "Microsoft JhengHei", sans-serif';
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffe9b0';
@@ -160,21 +192,27 @@ const UI = {
     ctx.shadowBlur = 3;
     ctx.fillText(title, r.x + 14, r.y + 22);
     ctx.shadowBlur = 0;
-    // 紅寶石關閉鈕
-    const cg = ctx.createLinearGradient(0, closeRect.y, 0, closeRect.y + closeRect.h);
-    cg.addColorStop(0, '#f07a5e');
-    cg.addColorStop(1, '#a82a20');
-    ctx.fillStyle = cg;
-    Utils.rr(ctx, closeRect.x, closeRect.y, closeRect.w, closeRect.h, 5);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,220,180,0.6)';
-    ctx.lineWidth = 1.2;
-    Utils.rr(ctx, closeRect.x, closeRect.y, closeRect.w, closeRect.h, 5);
-    ctx.stroke();
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillText('✕', closeRect.x + closeRect.w / 2, closeRect.y + 14);
+    // 關閉鈕（有 ui_btn_close.png 則貼圖，否則紅寶石）
+    const cimg = this._uiImg('ui_btn_close.png');
+    if (this._uiReady(cimg)) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(cimg, closeRect.x, closeRect.y, closeRect.w, closeRect.h);
+    } else {
+      const cg = ctx.createLinearGradient(0, closeRect.y, 0, closeRect.y + closeRect.h);
+      cg.addColorStop(0, '#f07a5e');
+      cg.addColorStop(1, '#a82a20');
+      ctx.fillStyle = cg;
+      Utils.rr(ctx, closeRect.x, closeRect.y, closeRect.w, closeRect.h, 5);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,220,180,0.6)';
+      ctx.lineWidth = 1.2;
+      Utils.rr(ctx, closeRect.x, closeRect.y, closeRect.w, closeRect.h, 5);
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText('✕', closeRect.x + closeRect.w / 2, closeRect.y + 14);
+    }
   },
 
   // 帶圖示的華麗能量條
@@ -246,6 +284,21 @@ const UI = {
   },
 
   _slot(ctx, s, hover) {
+    const img = this._uiImg('ui_slot.png');
+    if (this._uiReady(img)) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(img, s.x, s.y, s.w, s.h);
+      if (hover) {
+        ctx.strokeStyle = 'rgba(255,222,130,0.95)';
+        ctx.lineWidth = 1.8;
+        Utils.rr(ctx, s.x + 1, s.y + 1, s.w - 2, s.h - 2, 7);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,222,130,0.10)';
+        Utils.rr(ctx, s.x, s.y, s.w, s.h, 7);
+        ctx.fill();
+      }
+      return;
+    }
     const g = ctx.createLinearGradient(0, s.y, 0, s.y + s.h);
     g.addColorStop(0, 'rgba(10,11,24,0.9)');
     g.addColorStop(1, 'rgba(28,32,58,0.9)');
@@ -340,23 +393,32 @@ const UI = {
         ctx.fillStyle = '#8fd8a0';
         ctx.fillText(`MP 消耗 ${d.mpCost(lv)}　冷卻 ${d.cd}s`, row.x + 52, row.y + 60);
       }
-      // 加點寶石按鈕
+      // 加點按鈕（有 ui_btn_plus.png 則貼圖：第 0 格停用、第 1 格可用；否則程序化）
       const can = p.sp > 0 && lv < d.maxLv && unlocked;
       const b = this.R.skillPlus[i];
-      const pg = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
-      pg.addColorStop(0, can ? '#6cc25a' : 'rgba(255,255,255,0.08)');
-      pg.addColorStop(1, can ? '#2e7d32' : 'rgba(255,255,255,0.04)');
-      ctx.fillStyle = pg;
-      Utils.rr(ctx, b.x, b.y, b.w, b.h, 7);
-      ctx.fill();
-      ctx.strokeStyle = can ? 'rgba(220,255,200,0.7)' : 'rgba(120,130,180,0.25)';
-      ctx.lineWidth = 1.3;
-      Utils.rr(ctx, b.x, b.y, b.w, b.h, 7);
-      ctx.stroke();
-      ctx.fillStyle = can ? '#fff' : '#777788';
-      ctx.font = 'bold 18px Verdana';
-      ctx.textAlign = 'center';
-      ctx.fillText('+', b.x + b.w / 2, b.y + 19);
+      const plusImg = this._uiImg('ui_btn_plus.png');
+      if (this._uiReady(plusImg)) {
+        const fw = plusImg.naturalWidth / 2;
+        ctx.imageSmoothingEnabled = true;
+        ctx.globalAlpha = can ? 1 : 0.45;
+        ctx.drawImage(plusImg, (can ? 1 : 0) * fw, 0, fw, plusImg.naturalHeight, b.x, b.y, b.w, b.h);
+        ctx.globalAlpha = 1;
+      } else {
+        const pg = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+        pg.addColorStop(0, can ? '#6cc25a' : 'rgba(255,255,255,0.08)');
+        pg.addColorStop(1, can ? '#2e7d32' : 'rgba(255,255,255,0.04)');
+        ctx.fillStyle = pg;
+        Utils.rr(ctx, b.x, b.y, b.w, b.h, 7);
+        ctx.fill();
+        ctx.strokeStyle = can ? 'rgba(220,255,200,0.7)' : 'rgba(120,130,180,0.25)';
+        ctx.lineWidth = 1.3;
+        Utils.rr(ctx, b.x, b.y, b.w, b.h, 7);
+        ctx.stroke();
+        ctx.fillStyle = can ? '#fff' : '#777788';
+        ctx.font = 'bold 18px Verdana';
+        ctx.textAlign = 'center';
+        ctx.fillText('+', b.x + b.w / 2, b.y + 19);
+      }
     });
   },
 
