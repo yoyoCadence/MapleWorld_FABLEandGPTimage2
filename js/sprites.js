@@ -247,11 +247,22 @@ const Sprites = {
     if (!this._readyImage(img)) return false;
     const stem = file.replace(/\.png$/i, '');
     const sheet = this._loadImage(this.ASSET_BASE + 'sprites/weapons/anim/' + stem + '_swing.png');
+    const item = (typeof ItemDB !== 'undefined' && ItemDB[id]) || {};
+    const swingStyle = ({ sword: 'sword', axe: 'axe', mace: 'mace', dagger: 'dagger', claw: 'claw', knuckle: 'knuckle' })[item.wtype];
+    const styleSheet = swingStyle ? this._loadImage(this.ASSET_BASE + 'sprites/fx/swing/' + swingStyle + '-sheet.png') : null;
 
     const pulse = 0.55 + Math.sin(t * 14) * 0.18;
     ctx.save();
     ctx.translate(-heroW * 0.29, -heroH * 0.48);
-    if (this._readyImage(sheet)) {
+    if (this._readyImage(styleSheet)) {
+      const cols = 6;
+      const frame = Math.min(cols - 1, Math.floor(q * cols));
+      const sw = styleSheet.naturalWidth / cols;
+      const sh = styleSheet.naturalHeight;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(styleSheet, frame * sw, 0, sw, sh, -54, -92, 108, 116);
+    } else if (this._readyImage(sheet)) {
       const cols = 6;
       const frame = Math.min(cols - 1, Math.floor(q * cols));
       const sw = sheet.naturalWidth / cols;
