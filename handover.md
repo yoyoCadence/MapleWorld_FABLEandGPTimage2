@@ -817,3 +817,63 @@ Existing pet-default.png stays as the starter pet. Missing -> procedural fallbac
 
 Naming is the contract: drop a correctly-named file in the path and it auto-loads
 (cache-busted by ?v=BUILD), no code change needed.
+
+## Animation / Effects / Skill Icons Asset Fill Pass (Codex, 2026-06-15)
+
+Generated the full asset set requested above with image2 contact sheets, then
+post-processed them into transparent PNG assets with `scripts/process_new_asset_specs.py`.
+
+### Completed assets
+
+- WALK sheets: 5 files at `assets/sprites/player/hero-<job>-walk-sheet.png`.
+  Each sheet is `480x96` = 6 frames of `80x96`.
+- MELEE swing FX: 6 files at `assets/sprites/fx/swing/<style>-sheet.png`.
+  Each sheet is `576x96` = 6 frames of `96x96`.
+- PROJECTILE sprites: 8 single sprites at `assets/sprites/fx/proj/<style>.png`
+  and duplicated to the written spec path `assets/sprites/proj/<style>.png`.
+  Optional 4-frame trail sheets are at `assets/sprites/fx/proj/<style>-sheet.png`.
+- SKILL ICONs: 40 files at `assets/ui/skills/<skillId>.png`, all `64x64`.
+- PET sprites: `assets/sprites/pet/pet-pig.png` and
+  `assets/sprites/pet/pet-fox.png`, both `64x64`.
+
+### Runtime wiring
+
+- `js/sprites.js` now prefers `assets/sprites/fx/swing/<wtype>-sheet.png`
+  for melee weapon families (`sword`, `axe`, `mace`, `dagger`, `claw`,
+  `knuckle`) before falling back to the older per-weapon swing sheets.
+- Current projectile runtime loads `assets/sprites/fx/proj/<style>.png`
+  (`js/entities/projectile.js`). The request path `assets/sprites/proj/<style>.png`
+  was also written for compatibility, but the game uses the `fx/proj` path today.
+- Cache bust was bumped from `20260615a` to `20260615b` in both
+  `js/config.js` and `index.html`.
+
+### Source image2 sheets
+
+The source sheets remain under:
+
+```text
+C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5
+```
+
+Rebuild command (paths are the image2 outputs from this pass):
+
+```powershell
+py scripts\process_new_asset_specs.py `
+  --walk "C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_0bf53a170e94c7d4016a30003e69d0819183642658e44fbe77.png" `
+  --swing "C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_0bf53a170e94c7d4016a3000f2ed108191bf49dce7786b139c.png" `
+  --projectiles "C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_0bf53a170e94c7d4016a300170f0008191bac56a461a3a1461.png" `
+  --icons-warrior "C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_0bf53a170e94c7d4016a3001e389508191a3dc045c3c7a2b4c.png" `
+  --icons-magician "C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_0bf53a170e94c7d4016a3002383c0c819194b8996aa80f5648.png" `
+  --icons-archer "C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_0bf53a170e94c7d4016a30028d14b48191a39b3e5dfebdbb3b.png" `
+  --icons-thief "C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_0bf53a170e94c7d4016a3002d26700819197326b7bc720bebf.png" `
+  --icons-pirate "C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_0bf53a170e94c7d4016a3003c0d7088191bf11dc4909329eb2.png" `
+  --pets "C:\Users\memor\.codex\generated_images\019ec3d4-a43f-7b30-ad38-da5b15fb37c5\ig_0bf53a170e94c7d4016a30041c9b6c819199b9b536546195f1.png"
+```
+
+### Verification
+
+- `node tests\smoke.test.js` -> 131 passed, 0 failed.
+- New smoke coverage checks walk-sheet loading, pet shop sprites, wtype swing FX,
+  projectile PNG loading, and skill icon PNG loading.
+- File scan confirmed: 5 walk sheets, 6 swing sheets, 16 `fx/proj` PNGs
+  (8 singles + 8 trail sheets), 40 skill icons, and pig/fox pet sprites.
