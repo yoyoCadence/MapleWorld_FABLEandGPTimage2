@@ -197,6 +197,12 @@ const Sprites = {
         img = this._loadImage(this.ASSET_BASE + cf);
       }
     }
+    const walking = Math.abs(p.vx) > 10 && p.onGround && !p.climbing;
+    // 走路專屬動畫表（hero-<job>-walk-sheet.png，6 格）；缺檔回退靜圖
+    if (!this._readyImage(img) && walking) {
+      const wsheet = this._loadImage(this.ASSET_BASE + 'sprites/player/hero-' + p.job + '-walk-sheet.png');
+      if (this._readyImage(wsheet)) { img = wsheet; cols = 6; frame = Math.floor(p.animT * 10) % cols; }
+    }
     if (!this._readyImage(img)) {
       const jobFile = this.PLAYER_ASSETS[p.job] || ('sprites/player/hero-' + p.job + '.png');
       img = this._loadImage(this.ASSET_BASE + jobFile);
@@ -207,13 +213,14 @@ const Sprites = {
     const attacking = p.attackAnim > 0;
     const q = attacking ? 1 - p.attackAnim / p.attackDur : 0;
     const inAir = !p.onGround;
-    const walking = Math.abs(p.vx) > 10 && p.onGround;
+    const walkSheet = walking && cols > 1;
+    // 走路用「輕微左右搖擺」取代上下彈跳，避免看起來像在跳；有走路動畫表時幾乎不額外位移
     const bob = p.climbing
       ? (cols > 1 ? Math.sin(p.animT * 9) * 0.45 : Math.sin(p.animT * 8) * 1.4)
       : inAir
         ? -2
         : walking
-          ? Math.sin(p.animT * 18) * 2.4
+          ? (walkSheet ? Math.sin(p.animT * 10) * 0.5 : Math.sin(p.animT * 11) * 1.0)
           : Math.sin(t * 2.3) * 1.2;
     const lean = p.climbing && cols > 1 ? 0 : attacking ? -0.11 + q * 0.22 : inAir ? -0.06 : walking ? Math.sin(p.animT * 9) * 0.035 : 0;
     const dh = p.climbing ? 76 : 84;

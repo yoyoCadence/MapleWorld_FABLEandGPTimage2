@@ -756,3 +756,64 @@ Optional future art (still all have procedural/empty fallbacks, nothing is broke
 
 - bgm_<theme>.mp3 x7 (MP3 is preferred over the existing WAVs if provided).
 - Hand-authored monster/skill sheets as noted in "Recommended Next Steps" above.
+
+## Asset Spec Request -- Animation / Effects / Skill Icons (2026-06-15)
+
+Player walking currently reuses a single static hero PNG with a small bob, so it
+reads as "hopping". The code now auto-loads a dedicated WALK SHEET when present,
+and every skill / class effect can be given its own art. None of these block play
+(all have procedural fallbacks), but they are the biggest visual upgrades left.
+
+All sheets: horizontal strip, equal-width frames, transparent background (corner
+alpha 0), trimmed consistently so the character/effect does not jitter between
+frames. PNG, sRGB.
+
+### 1. Character WALK animation sheets (fixes the "hopping" look)
+Path: assets/sprites/player/hero-<job>-walk-sheet.png   (6 frames, left-to-right)
+  jobs: warrior, magician, archer, thief, pirate
+Frame size approx 80x96 (same proportion as existing hero-<job>.png). Side view,
+facing RIGHT (engine mirrors for left). A natural 6-frame walk cycle: contact ->
+pass -> contact, legs alternating, only a few px vertical travel (NOT a jump).
+Code reads it at ~10 fps; falls back to the static hero PNG if missing.
+
+### 2. Per-class / per-weapon MELEE swing effects (stop everyone swinging a sword)
+Today all melee classes share one slash arc. Give each weapon family its own:
+Path: assets/sprites/fx/swing/<style>-sheet.png   (5-6 frames, ~96x96, additive-friendly)
+  - sword   : wide bright slash arc (current style is fine as the sword one)
+  - axe     : heavier, thicker arc
+  - mace    : blunt shock/dust burst
+  - dagger  : short fast double-slit (thief)
+  - claw    : 3 parallel claw streaks (thief)
+  - knuckle : circular fist impact / shock ring (pirate punch)
+Mapping is by the equipped weapon's wtype (see js/data/items.js WTYPE_NAMES).
+
+### 3. PROJECTILE sprites (per style; e.g. cannon should be a cannonball)
+Path: assets/sprites/proj/<style>.png  (single sprite, ~40x20, pointing RIGHT)
+ and optional trail sheet assets/sprites/fx/proj/<style>-sheet.png (4-6 frames).
+Styles in use: magic, arrow, star, bullet, energy, fire, ice, arcane.
+  - bullet : metal cannonball + muzzle spark (pirate cannonBlast / cannonBarrage)
+  - star   : steel throwing star/dart (thief luckySeven / tripleThrow)
+  - arrow  : feathered arrow (archer)
+  - fire   : flaming orb (mage fireball / phoenix)
+  - ice    : ice shard (mage iceSpike / frostNova)
+  - energy : blue energy wave (warrior energyWave)
+  - arcane : purple arcane bolt (mage arcaneBlast)
+  - magic  : generic mage basic bolt
+
+### 4. SKILL ICONs (shown on the skill bar + skill window)
+Path: assets/ui/skills/<skillId>.png   64x64, transparent, MapleStory-ish gem/badge.
+40 skill ids (5 jobs x 8). Missing icons fall back to a colored letter badge.
+ warrior : powerStrike spinSlash energyWave heal rage groundSmash crusherCombo heroWill
+ magician: fireball iceSpike thunderBolt healAura frostNova magicGuard meteor arcaneBlast
+ archer  : powerShot arrowRain pierceArrow eagleEye tripleShot evasion meteorArrow phoenixStrike
+ thief   : luckySeven doubleStab shadowFlurry hasteBuff tripleThrow smokeBomb assassinate shadowStorm
+ pirate  : knucklePunch whirlKick cannonBlast battleRage dragonStrike cannonBarrage octopus fistFury
+
+### 5. PET sprites (pet shop sells these)
+Path: assets/sprites/pet/pet-<kind>.png   (~48x48, side view facing RIGHT)
+  - pet-pig.png  (item petPig,  "粉紅小豬")
+  - pet-fox.png  (item petFox,  "九尾小狐")
+Existing pet-default.png stays as the starter pet. Missing -> procedural fallback.
+
+Naming is the contract: drop a correctly-named file in the path and it auto-loads
+(cache-busted by ?v=BUILD), no code change needed.

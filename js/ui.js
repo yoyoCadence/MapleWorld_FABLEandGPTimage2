@@ -2023,9 +2023,9 @@ const UI = {
     // 操作面板
     this.panel(ctx, W / 2 - 370, 246, 740, 152, 12);
     const lines = [
-      '← →  移動　　Space  跳躍　　↑  爬繩索 / 進入傳送門　　↓+Space  下跳',
-      'X  普通攻擊　　C / V / B / A  職業技能　　Z  撿取　　1 / 2  藥水',
-      'I  背包　　K  技能加點　　P  角色資訊　　M  音效開關',
+      '← →  移動　　Space  跳躍　　↑  爬繩索 / 進入傳送門 / 對話　　↓+Space  下跳',
+      'X  普通攻擊　　A S D F G H  技能快捷（可自訂）　　Z  撿取　　1 2 3  消耗品',
+      'I  背包　　K  技能　　P  角色　　T  任務　　M  音效　　Esc  設定',
       '五大職業、25 張地圖、20+ 種怪物、4 大 Boss——打造你的楓之冒險！',
     ];
     ctx.font = '14px "Microsoft JhengHei", sans-serif';
@@ -2117,8 +2117,8 @@ const UI = {
     ctx.fillStyle = '#ffd87a';
     ctx.fillText(`HP ×${m.hp}　MP ×${m.mp}　攻擊 ×${m.atk}　防禦 ×${m.def}`, W / 2, dy + 58);
     ctx.fillStyle = '#a8bcd8';
-    const sk = jd.skills.map((id) => `${SkillDB[id].key}·${SkillDB[id].name}`).join('　');
-    ctx.fillText(`技能：${sk}`, W / 2, dy + 84);
+    const sk = jd.skills.map((id) => SkillDB[id].name).join('、');
+    ctx.fillText(`起始技能：${sk}`, W / 2, dy + 84);
     ctx.fillStyle = '#8fa3bd';
     ctx.fillText('起始武器：' + (ItemDB[jd.startWeapon] ? ItemDB[jd.startWeapon].name : ''), W / 2, dy + 108);
 
