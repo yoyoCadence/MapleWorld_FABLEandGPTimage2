@@ -65,6 +65,13 @@ const Game = {
       }
       else if (sc === 'skill') { this.player.level = 70; this.player.jobRank = 3; this.player.sp = 10; UI.show.skill = true; }
       else if (sc === 'elder') { this.player.level = 35; UI.show.dialogue = true; UI.dlgNpc = 'elder'; }
+      else if (sc === 'enhance') {
+        this.player.meso = 999999;
+        this.player.addItem('mapleSword'); this.player.addItem('dragonHelm'); this.player.addItem('ironShield');
+        const w = this.player.inventory.findIndex((s) => s && s.id === 'mapleSword');
+        if (this.player.inventory[w]) this.player.inventory[w].roll = { tier: 2, atk: 30, enh: 4 };
+        UI.show.craft = true; UI.craftTab = 'enhance'; UI.enhSel = w;
+      }
     }
     if (hash === '#name') { this.state = 'classSelect'; }
     // 動畫示範：#anim-walk / #anim-swing / #anim-cast（截圖驗證動畫流暢度用）
