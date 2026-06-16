@@ -5,6 +5,8 @@ const UI = {
   confirmReset: 0,
   invTab: 'all',
   shopTab: 'buy',
+  craftTab: 'craft',  // 鐵匠視窗分頁：製作 / 強化
+  enhSel: -1,         // 強化選中的背包格索引
   sellSel: null,    // 賣出數量選擇：{ slot, qty }
   confirmSell: false, // 賣出最終確認視窗
   buySel: null,     // 購買消耗品數量選擇：{ i, qty }
@@ -109,7 +111,7 @@ const UI = {
     if (d.type === 'use') return Math.max(10, Math.round(((d.heal || 0) + (d.mpHeal || 0)) / 6));
     if (d.type === 'material') return 25;
     if (d.type === 'pet') return 1500;
-    return Math.round(((d.atk || 0) + (d.def || 0)) * 8 + (d.hp || 0) * 0.4 + (d.mp || 0) * 0.4 + (d.reqLv || 1) * 18 + 40);
+    return equipValue(id);
   },
   _sellOf(id) { return Math.max(1, Math.floor(this._valueOf(id) * 0.6)); },
   _expandCost(p) {
@@ -301,14 +303,37 @@ const UI = {
       }
     }
     if (this.show.craft) {
-      const r = this._win('craft', 300, 64, 424, 452);
+      const r = this._win('craft', 300, 56, 424, 492);
       R.craft = r;
       R.craftClose = { x: r.x + r.w - 26, y: r.y + 7, w: 19, h: 19 };
-      R.craftRows = [];
-      CRAFT_ORDER.forEach((cid, i) => {
-        const ry = r.y + 44 + i * 49;
-        R.craftRows.push({ cid, x: r.x + 12, y: ry, w: r.w - 24, h: 45, btn: { x: r.x + r.w - 76, y: ry + 9, w: 60, h: 28 } });
+      R.craftTabs = [];
+      const ctw = (r.w - 24) / 2;
+      [['craft', '🔨 製作'], ['enhance', '✨ 強化']].forEach((tb, i) => {
+        R.craftTabs.push({ key: tb[0], label: tb[1], x: r.x + 12 + i * ctw, y: r.y + 34, w: ctw - 4, h: 24 });
       });
+      if (this.craftTab === 'craft') {
+        R.craftRows = [];
+        CRAFT_ORDER.forEach((cid, i) => {
+          const ry = r.y + 70 + i * 50;
+          R.craftRows.push({ cid, x: r.x + 12, y: ry, w: r.w - 24, h: 46, btn: { x: r.x + r.w - 76, y: ry + 10, w: 60, h: 28 } });
+        });
+      } else {
+        // 強化分頁：背包中所有裝備的格子 + 強化按鈕
+        const p = (typeof Game !== 'undefined' && Game.player) ? Game.player : null;
+        R.enhCells = [];
+        if (p) {
+          let n = 0;
+          for (let i = 0; i < p.invSize; i++) {
+            const it = p.inventory[i];
+            if (it && ItemDB[it.id] && ItemDB[it.id].type === 'equip') {
+              const col = n % 7, row = Math.floor(n / 7);
+              R.enhCells.push({ idx: i, x: r.x + 16 + col * 56, y: r.y + 74 + row * 50, w: 46, h: 46 });
+              n++;
+            }
+          }
+        }
+        R.enhBtn = { x: r.x + r.w / 2 - 78, y: r.y + r.h - 46, w: 156, h: 34 };
+      }
     }
     if (this.show.dialogue && this.dlgNpc) {
       const r = this._win('dlg', 268, 70, 488, 396);
@@ -643,12 +668,25 @@ const UI = {
     if (R.craft && this.inRect(R.craft)) {
       Input.clicked = false;
       if (this.inRect(R.craftClose)) { this.show.craft = false; return; }
-      for (const row of R.craftRows) {
-        if (this.inRect(row.btn)) {
-          const res = p.craft(row.cid);
+      for (const tb of R.craftTabs) { if (this.inRect(tb)) { this.craftTab = tb.key; this.enhSel = -1; Sound.play('equip'); return; } }
+      if (this.craftTab === 'craft') {
+        for (const row of R.craftRows) {
+          if (this.inRect(row.btn)) {
+            const res = p.craft(row.cid);
+            if (res === 'meso') { Effects.announce('楓幣不足', '#ef9a9a'); Sound.play('error'); }
+            else if (res === 'mats') { Effects.announce('材料不足', '#ef9a9a'); Sound.play('error'); }
+            else if (res === 'full') { Effects.announce('背包已滿', '#ef9a9a'); Sound.play('error'); }
+            return;
+          }
+        }
+      } else {
+        // 強化分頁
+        for (const c of R.enhCells) { if (this.inRect(c)) { this.enhSel = c.idx; Sound.play('equip'); return; } }
+        if (R.enhBtn && this.inRect(R.enhBtn) && this.enhSel >= 0) {
+          const res = p.enhance(this.enhSel);
           if (res === 'meso') { Effects.announce('楓幣不足', '#ef9a9a'); Sound.play('error'); }
-          else if (res === 'mats') { Effects.announce('材料不足', '#ef9a9a'); Sound.play('error'); }
-          else if (res === 'full') { Effects.announce('背包已滿', '#ef9a9a'); Sound.play('error'); }
+          else if (res === 'mats') { Effects.announce('黃金礦石不足', '#ef9a9a'); Sound.play('error'); }
+          else if (res === 'max') { Effects.announce('已達強化上限 +' + ENH_MAX, '#ffd54f'); Sound.play('error'); }
           return;
         }
       }
@@ -995,6 +1033,12 @@ const UI = {
       if (it) {
         if (it.roll && it.roll.tier > 0) this._tierBorder(ctx, s, it.roll.tier);
         Sprites.drawItemIcon(ctx, it.id, s.x + 24, s.y + 24, 40);
+        if (it.roll && it.roll.enh) {
+          ctx.font = 'bold 11px Verdana'; ctx.textAlign = 'left';
+          ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+          ctx.strokeText('+' + it.roll.enh, s.x + 3, s.y + 13);
+          ctx.fillStyle = '#ffe08a'; ctx.fillText('+' + it.roll.enh, s.x + 3, s.y + 13);
+        }
         if (it.qty > 1) {
           ctx.font = 'bold 11px Verdana';
           ctx.textAlign = 'right';
@@ -1311,7 +1355,9 @@ const UI = {
 
   drawCraft(ctx, p) {
     const r = this.R.craft;
-    this.chrome(ctx, r, '🔨 鐵匠 鋼爺 - 製作', this.R.craftClose);
+    this.chrome(ctx, r, '🔨 鐵匠 鋼爺', this.R.craftClose);
+    for (const tb of this.R.craftTabs) this._tabBtn(ctx, tb, this.craftTab === tb.key);
+    if (this.craftTab === 'enhance') { this._drawEnhance(ctx, p); return; }
     for (const row of this.R.craftRows) {
       const d = CraftDB[row.cid];
       const res = ItemDB[d.result.id];
@@ -1340,6 +1386,82 @@ const UI = {
       ctx.font = '10px Verdana';
       ctx.fillText(`${Utils.fmt(d.cost)} 楓幣`, row.btn.x - 8, row.y + 16);
       this._btn(ctx, row.btn, '製作', afford && haveMats, 'green');
+    }
+    Sprites.drawItemIcon(ctx, 'meso', r.x + 22, r.y + r.h - 17, 20);
+    ctx.font = 'bold 13px "Microsoft JhengHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffd87a';
+    ctx.fillText(Utils.fmt(p.meso), r.x + 36, r.y + r.h - 12);
+  },
+
+  _drawEnhance(ctx, p) {
+    const r = this.R.craft;
+    ctx.textAlign = 'center';
+    ctx.font = '11px "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#8fa3bd';
+    ctx.fillText('選擇背包中的裝備進行強化（提升數值，等級越高越難成功）', r.x + r.w / 2, r.y + 70);
+    // 裝備格
+    if (!this.R.enhCells.length) {
+      ctx.fillStyle = '#94a8c8'; ctx.font = '13px "Microsoft JhengHei", sans-serif';
+      ctx.fillText('背包沒有可強化的裝備（先卸下要強化的裝備）', r.x + r.w / 2, r.y + 150);
+    }
+    for (const c of this.R.enhCells) {
+      const it = p.inventory[c.idx];
+      if (!it) continue;
+      const seld = this.enhSel === c.idx;
+      this._slot(ctx, c, this.inRect(c) || seld);
+      if (seld) { ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 2; Utils.rr(ctx, c.x + 1, c.y + 1, c.w - 2, c.h - 2, 6); ctx.stroke(); }
+      if (it.roll && it.roll.tier > 0) this._tierBorder(ctx, c, it.roll.tier);
+      Sprites.drawItemIcon(ctx, it.id, c.x + c.w / 2, c.y + c.h / 2, c.w - 10);
+      const enh = (it.roll && it.roll.enh) || 0;
+      if (enh > 0) {
+        ctx.font = 'bold 10px Verdana'; ctx.textAlign = 'left';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.strokeText('+' + enh, c.x + 2, c.y + 12);
+        ctx.fillStyle = '#ffe08a'; ctx.fillText('+' + enh, c.x + 2, c.y + 12);
+      }
+    }
+    // 詳情面板
+    const py = r.y + 74 + Math.ceil(Math.max(1, this.R.enhCells.length) / 7) * 50 + 8;
+    const sel = this.enhSel >= 0 ? p.inventory[this.enhSel] : null;
+    if (sel && ItemDB[sel.id] && ItemDB[sel.id].type === 'equip') {
+      const d = ItemDB[sel.id];
+      const enh = (sel.roll && sel.roll.enh) || 0;
+      const maxed = enh >= ENH_MAX;
+      this.panel(ctx, r.x + 14, py, r.w - 28, r.y + r.h - 56 - py, 8);
+      Sprites.drawItemIcon(ctx, sel.id, r.x + 42, py + 30, 36);
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 15px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = '#ffeec2';
+      ctx.fillText(`${d.name}${enh > 0 ? '  +' + enh : ''}`, r.x + 70, py + 24);
+      // 數值：目前 → 強化後
+      ctx.font = '11px "Microsoft JhengHei", sans-serif';
+      let sy = py + 44;
+      const nextRoll = Object.assign({}, sel.roll, { enh: enh + 1 });
+      for (const f of ROLL_FIELDS) {
+        const cur = statVal(sel.id, sel.roll, f);
+        if (!cur && !(d[f])) continue;
+        const nxt = statVal(sel.id, nextRoll, f);
+        const label = { atk: '攻擊力', def: '防禦力', hp: '最大HP', mp: '最大MP', spd: '移速' }[f];
+        ctx.fillStyle = '#a8bcd8';
+        ctx.fillText(`${label}  ${cur}` + (maxed ? '' : `  →  ${nxt}  (+${nxt - cur})`), r.x + 70, sy);
+        sy += 16;
+      }
+      // 費用 + 成功率
+      const cost = enhanceCost(sel.id, enh);
+      const rate = Math.round(enhanceRate(enh) * 100);
+      ctx.fillStyle = '#ffd87a';
+      ctx.fillText(maxed ? '已達強化上限 +' + ENH_MAX : `費用：${Utils.fmt(cost.meso)} 楓幣` + (cost.mat ? ` + 黃金礦石 x${cost.mat.qty}` : ''), r.x + 70, sy + 4);
+      if (!maxed) {
+        ctx.fillStyle = rate >= 90 ? '#a5d6a7' : rate >= 60 ? '#ffd87a' : '#ef9a9a';
+        ctx.fillText(`成功率：${rate}%` + (enh >= 8 ? '（失敗會 -1 級）' : ''), r.x + 70, sy + 22);
+      }
+      const haveMat = !cost.mat || p.invCount(cost.mat.id) >= cost.mat.qty;
+      this._btn(ctx, this.R.enhBtn, maxed ? '已滿級' : '強化', !maxed && p.meso >= cost.meso && haveMat, 'green');
+    } else {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#7a8398'; ctx.font = '12px "Microsoft JhengHei", sans-serif';
+      ctx.fillText('↑ 點選一件裝備', r.x + r.w / 2, py + 40);
     }
     Sprites.drawItemIcon(ctx, 'meso', r.x + 22, r.y + r.h - 17, 20);
     ctx.font = 'bold 13px "Microsoft JhengHei", sans-serif';
@@ -1553,6 +1675,12 @@ const UI = {
       const rl = p.equipRolls[e.slot];
       if (id && rl && rl.tier > 0) this._tierBorder(ctx, e, rl.tier);
       if (id) Sprites.drawItemIcon(ctx, id, e.x + 23, e.y + 23, 38);
+      if (id && rl && rl.enh) {
+        ctx.font = 'bold 10px Verdana'; ctx.textAlign = 'left';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+        ctx.strokeText('+' + rl.enh, e.x + 2, e.y + 11);
+        ctx.fillStyle = '#ffe08a'; ctx.fillText('+' + rl.enh, e.x + 2, e.y + 11);
+      }
       ctx.font = '9px "Microsoft JhengHei", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = '#94a8c8';
@@ -1573,7 +1701,8 @@ const UI = {
     const id = d.__id || d.id;
     const tier = roll ? (EQUIP_TIERS[roll.tier] || EQUIP_TIERS[0]) : null;
     const titleColor = tier ? tier.color : '#ffe082';
-    const title = tier && roll.tier > 0 ? `${d.name}　【${tier.name}】` : d.name;
+    const enhStr = roll && roll.enh ? ` +${roll.enh}` : '';
+    const title = (d.name + enhStr) + (tier && roll.tier > 0 ? `　【${tier.name}】` : '');
     const lines = [{ t: title, c: titleColor }];
     if (d.type === 'use') {
       lines.push({ t: d.desc, c: '#b0bec5' });

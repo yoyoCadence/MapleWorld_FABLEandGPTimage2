@@ -67,6 +67,16 @@ const Game = {
       else if (sc === 'elder') { this.player.level = 35; UI.show.dialogue = true; UI.dlgNpc = 'elder'; }
     }
     if (hash === '#name') { this.state = 'classSelect'; }
+    // 動畫示範：#anim-walk / #anim-swing / #anim-cast（截圖驗證動畫流暢度用）
+    const am = hash.match(/^#anim-(\w+)$/);
+    if (am) {
+      this.animDemo = am[1];
+      if (am[1] === 'cast') { this.player = new Player(null, 'magician', '示範'); this.player.mp = 99999; }
+      this.loadMap('meadow', null, null);
+      this.player.x = 360; this.player.y = 560; this.player.invinc = 1e9;
+      Camera.snap(this.player, this.map);
+      this.state = 'play';
+    }
     Camera.snap(this.player, this.map);
   },
 
@@ -379,7 +389,15 @@ const Game = {
     const p = this.player;
     // 設定 / 放大地圖開啟時暫停世界（避免在選單中被怪攻擊）
     if (UI.show.settings || UI.mapExpanded) { Effects.update(dt); return; }
+    // 動畫示範模式：自動注入輸入並把角色固定在畫面中央
+    if (this.animDemo) {
+      if (this.animDemo === 'walk') Input.down['ArrowRight'] = true;
+      else if (this.animDemo === 'swing') Input.pressed['KeyX'] = true;
+      else if (this.animDemo === 'cast') { Input.pressed[SKILL_BAR_KEYS[0]] = true; p.mp = p.maxMp; }
+      p.invinc = 1e9;
+    }
     p.update(dt, this);
+    if (this.animDemo) { p.x = 360; p.kbVx = 0; }
     if (this.state !== 'play') return;
 
     for (const m of this.monsters) m.update(dt, this);

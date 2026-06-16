@@ -585,6 +585,38 @@ check('serialize 含 name/jobRank/skillBar', __ser2.name != null && __ser2.jobRa
 const __pc = new Player(__ser2);
 check('讀檔還原轉職階與技能列', __pc.jobRank === 3 && __pc.skillList().length >= 8);
 
+// 29. 裝備強化
+const __pe3 = new Player(null, 'warrior');
+for (let i = 0; i < __pe3.invSize; i++) __pe3.inventory[i] = null;
+__pe3.meso = 999999;
+__pe3.addItem('woodSword');
+const __wi = __pe3.inventory.findIndex((s) => s && s.id === 'woodSword');
+const __baseAtk = statVal('woodSword', __pe3.inventory[__wi].roll, 'atk');
+const __r1 = __pe3.enhance(__wi);
+check('強化成功(+1)', __r1 === 'ok' && (__pe3.inventory[__wi].roll.enh || 0) === 1);
+check('強化提升數值', statVal('woodSword', __pe3.inventory[__wi].roll, 'atk') > __baseAtk);
+__pe3.meso = 0;
+check('楓幣不足擋下強化', __pe3.enhance(__wi) === 'meso');
+__pe3.meso = 9e9;
+__pe3.inventory[__wi].roll.enh = ENH_MAX;
+check('滿級擋下強化', __pe3.enhance(__wi) === 'max');
+const __pe4 = new Player(null, 'warrior');
+__pe4.equips.weapon = 'ironSword'; __pe4.equipRolls.weapon = { tier: 0, atk: 14 };
+const __a0 = __pe4.equipBonus('atk');
+__pe4.equipRolls.weapon.enh = 5;
+check('強化反映到 equipBonus', __pe4.equipBonus('atk') > __a0);
+check('強化費用隨等級遞增', enhanceCost('ironSword', 5).meso > enhanceCost('ironSword', 0).meso);
+
+// 30. 強化視窗繪製不報錯
+const __pe5 = Game.player;
+for (let i = 0; i < __pe5.invSize; i++) __pe5.inventory[i] = null;
+__pe5.addItem('mapleSword');
+UI.show.craft = true; UI.craftTab = 'enhance'; UI.enhSel = __pe5.inventory.findIndex((s) => s && s.id === 'mapleSword');
+let __enhDrawOk = true;
+try { UI.layout(); Game.draw(ctxStub_); } catch (e) { __enhDrawOk = false; console.error(e); }
+check('強化視窗繪製不報錯', __enhDrawOk);
+UI.show.craft = false; UI.craftTab = 'craft'; UI.enhSel = -1;
+
 console.log(\`\\n煙霧測試結果：\${__pass} 通過，\${__fail} 失敗\`);
 if (__fail > 0) process.exit(1);
 `;

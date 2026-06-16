@@ -161,9 +161,39 @@ function rollEquip(id) {
   return roll;
 }
 
-// 取得「實際數值」：有 roll 用 roll，否則回退基礎值（向下相容舊存檔與無 roll 的裝備）。
+// 取得「實際數值」：有 roll 用 roll，否則回退基礎值；再依強化等級 roll.enh 加成。
 function statVal(id, roll, field) {
-  if (roll && roll[field] != null) return roll[field];
+  let v = (roll && roll[field] != null) ? roll[field] : 0;
+  if (v === 0) { const d = ItemDB[id]; v = (d && d[field]) || 0; }
+  if (v && roll && roll.enh) v += Math.ceil(v * ENH_PER_LEVEL * roll.enh);  // 每級至少 +1
+  return v;
+}
+
+// ════════════ 裝備強化（在鐵匠處升級裝備數值）════════════
+const ENH_MAX = 12;            // 強化上限 +12
+const ENH_PER_LEVEL = 0.07;    // 每 +1 提升該裝備各數值 7%
+
+// 裝備參考價值（買價/賣價/強化費用的基準）
+function equipValue(id) {
   const d = ItemDB[id];
-  return (d && d[field]) || 0;
+  if (!d || d.type !== 'equip') return 40;
+  return Math.round(((d.atk || 0) + (d.def || 0)) * 8 + (d.hp || 0) * 0.4 + (d.mp || 0) * 0.4 + (d.reqLv || 1) * 18 + 40);
+}
+
+// 強化成功率（等級越高越難）
+function enhanceRate(enh) {
+  if (enh <= 2) return 1.0;
+  if (enh <= 5) return 0.9;
+  if (enh <= 7) return 0.75;
+  if (enh <= 9) return 0.55;
+  return 0.4;
+}
+
+// 強化費用：楓幣（隨等級遞增）+ 黃金礦石（+3 起需要）
+function enhanceCost(id, enh) {
+  const v = equipValue(id);
+  return {
+    meso: Math.round(v * (0.6 + enh * 0.5)),
+    mat: enh >= 3 ? { id: 'goldOre', qty: 1 + Math.floor((enh - 3) / 3) } : null,
+  };
 }

@@ -743,6 +743,35 @@ class Player {
     return 'ok';
   }
 
+  // ── 裝備強化（鐵匠）──
+  // 回傳 'ok'|'fail'|'meso'|'mats'|'max'|'bad'
+  enhance(i) {
+    const s = this.inventory[i];
+    if (!s) return 'bad';
+    const d = ItemDB[s.id];
+    if (!d || d.type !== 'equip') return 'bad';
+    if (!s.roll) s.roll = rollEquip(s.id) || { tier: 0 };
+    const enh = s.roll.enh || 0;
+    if (enh >= ENH_MAX) return 'max';
+    const cost = enhanceCost(s.id, enh);
+    if (this.meso < cost.meso) return 'meso';
+    if (cost.mat && this.invCount(cost.mat.id) < cost.mat.qty) return 'mats';
+    this.meso -= cost.meso;
+    if (cost.mat) this.removeItems(cost.mat.id, cost.mat.qty);
+    if (Math.random() < enhanceRate(enh)) {
+      s.roll.enh = enh + 1;
+      Effects.announce(`✨ 強化成功！${d.name} +${enh + 1}`, '#ffe082');
+      Sound.play('levelup');
+      this.hp = Math.min(this.hp, this.maxHp);
+      this.mp = Math.min(this.mp, this.maxMp);
+      return 'ok';
+    }
+    if (enh >= 8) s.roll.enh = enh - 1;   // 高階失敗降一級
+    Effects.announce(`💢 強化失敗${enh >= 8 ? '（等級 -1）' : ''}`, '#ef9a9a');
+    Sound.play('error');
+    return 'fail';
+  }
+
   // 擴充背包格數（商人購買）
   expandInv(count) {
     const add = Math.min(count, CONFIG.INV_MAX - this.invSize);
