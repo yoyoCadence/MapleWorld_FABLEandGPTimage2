@@ -826,7 +826,7 @@ post-processed them into transparent PNG assets with `scripts/process_new_asset_
 ### Completed assets
 
 - WALK sheets: 5 files at `assets/sprites/player/hero-<job>-walk-sheet.png`.
-  Each sheet is `480x96` = 6 frames of `80x96`.
+  Current normalized sheets are `576x96` = 6 frames of `96x96`.
 - MELEE swing FX: 6 files at `assets/sprites/fx/swing/<style>-sheet.png`.
   Each sheet is `576x96` = 6 frames of `96x96`.
 - PROJECTILE sprites: 8 single sprites at `assets/sprites/fx/proj/<style>.png`
@@ -877,3 +877,45 @@ py scripts\process_new_asset_specs.py `
   projectile PNG loading, and skill icon PNG loading.
 - File scan confirmed: 5 walk sheets, 6 swing sheets, 16 `fx/proj` PNGs
   (8 singles + 8 trail sheets), 40 skill icons, and pig/fox pet sprites.
+
+## Player Animation Consistency Fix (Codex, 2026-06-16)
+
+Fixed the visible size and direction mismatch between idle / walk / climb player
+states.
+
+### What changed
+
+- `js/sprites.js` now crops each player frame by alpha bbox before drawing. This
+  normalizes visible character height instead of scaling by the full PNG canvas,
+  which had inconsistent transparent padding across idle / walk / climb sheets.
+- Player visible height is now consistently drawn at `76px` for idle, walking,
+  and climbing.
+- WALK sheets were mirrored horizontally so their source direction matches the
+  existing idle art convention. The engine expects player source art to face LEFT
+  and mirrors it for `p.facing === 1`.
+- WALK sheets were rebuilt from each job's existing image2 idle PNG via
+  `scripts/rebuild_player_walk_from_idle.py`. This keeps costume, weapon,
+  palette, face, and outline style consistent with idle instead of using a
+  separate contact sheet that made the character change style mid-walk.
+- `scripts/process_new_asset_specs.py` now mirrors generated walk frames during
+  post-processing, so rebuilding the image2 sheets will not reintroduce the
+  wrong direction.
+- Cache bust was bumped to `20260616b`.
+
+### Validation
+
+- Added the runtime audit scene `index.html#anim-player`. It draws every job
+  through the real `Sprites.drawPlayer()` path in three rows: idle / walk /
+  climb.
+- Browser verification was captured from the actual game canvas at
+  `output/playwright/player-animation-audit-canvas.png`. The screenshot confirms
+  warrior / magician / archer / thief / pirate now keep consistent runtime
+  height across idle, walking, and climbing; warrior walk also keeps the same red
+  armor style as idle.
+- Rebuild command for style-consistent walking:
+
+```powershell
+py scripts\rebuild_player_walk_from_idle.py
+```
+
+- `node tests\smoke.test.js` still passes after the renderer change.

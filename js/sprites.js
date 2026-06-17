@@ -5,7 +5,7 @@ const Sprites = {
   PLAYER_ASSET: 'sprites/player/hero-adventurer.png',
   // 每職業專屬立繪（缺檔時自動沿用 hero-adventurer.png）
   PLAYER_ASSETS: {
-    warrior: 'sprites/player/hero-adventurer.png',
+    warrior: 'sprites/player/hero-warrior.png',
     magician: 'sprites/player/hero-magician.png',
     archer: 'sprites/player/hero-archer.png',
     thief: 'sprites/player/hero-thief.png',
@@ -223,10 +223,12 @@ const Sprites = {
           ? (walkSheet ? Math.sin(p.animT * 10) * 0.5 : Math.sin(p.animT * 11) * 1.0)
           : Math.sin(t * 2.3) * 1.2;
     const lean = p.climbing && cols > 1 ? 0 : attacking ? -0.11 + q * 0.22 : inAir ? -0.06 : walking ? Math.sin(p.animT * 9) * 0.035 : 0;
-    const dh = p.climbing ? 76 : 84;
+    const targetH = 76;
     const sw = img.naturalWidth / cols;
     const sh = img.naturalHeight;
-    const dw = dh * (sw / sh);
+    const box = this._playerFrameBox(img, frame, cols);
+    const dh = targetH;
+    const dw = dh * (box.w / box.h);
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
@@ -234,10 +236,51 @@ const Sprites = {
     ctx.scale(-p.facing, 1);
     ctx.rotate(lean);
     if (p.climbing && cols === 1) ctx.rotate(Math.sin(p.animT * 7) * 0.035);
-    ctx.drawImage(img, frame * sw, 0, sw, sh, -dw * 0.48, -dh - 2, dw, dh);
+    ctx.drawImage(img, frame * sw + box.x, box.y, box.w, box.h, -dw * 0.5, -dh - 2, dw, dh);
     if (attacking && !p.climbing) this._drawWeaponAsset(ctx, p, q, t, dw, dh);
     ctx.restore();
     return true;
+  },
+
+  _playerFrameBox(img, frame, cols) {
+    const sw = Math.max(1, Math.floor(img.naturalWidth / cols));
+    const sh = img.naturalHeight;
+    const cacheKey = (img.src || '') + '#playerBox#' + frame + '#cols' + cols;
+    if (this._playerBoxCache && this._playerBoxCache[cacheKey]) return this._playerBoxCache[cacheKey];
+    if (!this._playerBoxCache) this._playerBoxCache = {};
+    const fallback = { x: 0, y: 0, w: sw, h: sh };
+    try {
+      const c = document.createElement('canvas');
+      c.width = sw;
+      c.height = sh;
+      const cx = c.getContext('2d');
+      cx.drawImage(img, frame * sw, 0, sw, sh, 0, 0, sw, sh);
+      const data = cx.getImageData(0, 0, sw, sh).data;
+      let minX = sw, minY = sh, maxX = -1, maxY = -1;
+      for (let y = 0; y < sh; y++) {
+        for (let x = 0; x < sw; x++) {
+          if (data[(y * sw + x) * 4 + 3] > 12) {
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      if (maxX < minX || maxY < minY) return fallback;
+      const pad = 3;
+      const box = {
+        x: Math.max(0, minX - pad),
+        y: Math.max(0, minY - pad),
+        w: Math.min(sw, maxX - minX + 1 + pad * 2),
+        h: Math.min(sh, maxY - minY + 1 + pad * 2),
+      };
+      this._playerBoxCache[cacheKey] = box;
+      return box;
+    } catch (e) {
+      this._playerBoxCache[cacheKey] = fallback;
+      return fallback;
+    }
   },
 
   _drawWeaponAsset(ctx, p, q, t, heroW, heroH) {

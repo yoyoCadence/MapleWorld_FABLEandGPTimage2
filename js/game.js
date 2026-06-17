@@ -84,6 +84,11 @@ const Game = {
       Camera.snap(this.player, this.map);
       this.state = 'play';
     }
+    if (hash === '#anim-player') {
+      this.loadMap('meadow', null, null);
+      this.player.invinc = 1e9;
+      this.state = 'animPlayer';
+    }
     Camera.snap(this.player, this.map);
   },
 
@@ -483,6 +488,10 @@ const Game = {
   // ── 繪製 ──
   draw(ctx) {
     const t = this.time;
+    if (this.state === 'animPlayer') {
+      this.drawPlayerAnimAudit(ctx, t);
+      return;
+    }
     Renderer.drawBackground(ctx, this.map, Camera, t);
     Camera.begin(ctx);
     Renderer.drawMapGeometry(ctx, this.map, t);
@@ -503,5 +512,82 @@ const Game = {
     if (this.state === 'classSelect') UI.drawClassSelect(ctx, this);
     if (this.state === 'nameInput') UI.drawNameInput(ctx, this);
     if (this.state === 'dead') UI.drawDeath(ctx);
+  },
+
+  drawPlayerAnimAudit(ctx, t) {
+    ctx.save();
+    try {
+      if (typeof document !== 'undefined' && document.body) document.body.dataset.animAudit = 'entered';
+      const jobs = ['warrior', 'magician', 'archer', 'thief', 'pirate'];
+      const states = ['idle', 'walk', 'climb'];
+      const auditPaths = [];
+      jobs.forEach((job) => {
+        auditPaths.push(Sprites.ASSET_BASE + (Sprites.PLAYER_ASSETS[job] || ('sprites/player/hero-' + job + '.png')));
+        auditPaths.push(Sprites.ASSET_BASE + 'sprites/player/hero-' + job + '-walk-sheet.png');
+        auditPaths.push(Sprites.ASSET_BASE + 'sprites/player/hero-' + job + '-climb-sheet.png');
+      });
+      const auditImages = auditPaths.map((p) => Sprites._loadImage(p));
+      const ready = auditImages.every((img) => Sprites._readyImage(img));
+      const frameCount = typeof window !== 'undefined' ? ((window.__animAuditFrames || 0) + 1) : 999;
+      if (typeof window !== 'undefined') window.__animAuditFrames = frameCount;
+      if (typeof window !== 'undefined') window.__animAuditReady = ready;
+      if (typeof document !== 'undefined' && document.body) document.body.dataset.animAudit = ready ? 'ready' : 'warming';
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.dataset.animAuditMissing = auditPaths.filter((p, i) => !Sprites._readyImage(auditImages[i])).join('|');
+      }
+
+      ctx.fillStyle = '#20222f';
+      ctx.fillRect(0, 0, CONFIG.CANVAS_W, CONFIG.CANVAS_H);
+      ctx.font = '14px "Microsoft JhengHei", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#f7e9bc';
+      ctx.fillText('Player animation audit - runtime Sprites.drawPlayer()', CONFIG.CANVAS_W / 2, 24);
+
+      jobs.forEach((job, col) => {
+        ctx.fillStyle = '#d9e6ff';
+        ctx.fillText(job, 160 + col * 170, 52);
+      });
+      states.forEach((label, row) => {
+        ctx.fillStyle = '#d9e6ff';
+        ctx.textAlign = 'right';
+        ctx.fillText(label, 82, 116 + row * 150);
+        ctx.strokeStyle = 'rgba(255,255,255,0.26)';
+        ctx.beginPath();
+        ctx.moveTo(96, 128 + row * 150);
+        ctx.lineTo(954, 128 + row * 150);
+        ctx.stroke();
+      });
+
+      jobs.forEach((job, col) => {
+        states.forEach((state, row) => {
+          const p = new Player(null, job, job);
+          p.x = 160 + col * 170;
+          p.y = 128 + row * 150;
+          p.onGround = true;
+          p.facing = 1;
+          p.animT = t + col * 0.11;
+          p.attackAnim = 0;
+          p.attackDur = 0.2;
+          p.vx = state === 'walk' ? CONFIG.MOVE_SPEED : 0;
+          p.climbing = state === 'climb' ? { x: p.x } : null;
+          Sprites.drawPlayer(ctx, p, t + col * 0.07);
+        });
+      });
+      if (typeof document !== 'undefined' && document.body && frameCount >= 12) document.body.dataset.animAudit = 'drawn';
+      if (typeof document !== 'undefined' && document.body && frameCount >= 12 && !document.body.dataset.animAuditPng) {
+        try {
+          document.body.dataset.animAuditPng = document.getElementById('game').toDataURL('image/png');
+        } catch (e) {}
+      }
+    } catch (e) {
+      if (typeof document !== 'undefined' && document.body) document.body.dataset.animAuditError = String(e && e.stack || e);
+      ctx.fillStyle = '#20222f';
+      ctx.fillRect(0, 0, CONFIG.CANVAS_W, CONFIG.CANVAS_H);
+      ctx.font = '14px "Microsoft JhengHei", sans-serif';
+      ctx.fillStyle = '#ff8a80';
+      ctx.textAlign = 'left';
+      ctx.fillText(String(e && e.message || e), 90, 300);
+    }
+    ctx.restore();
   },
 };

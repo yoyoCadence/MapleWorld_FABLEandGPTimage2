@@ -28,7 +28,7 @@ const CONFIG = {
 
 // 版本號：每次更新都會變動。index.html 的 ?v= 與素材載入皆用它做快取破壞，
 // 確保玩家一定載到最新版（GitHub Pages 等靜態主機常吃舊快取）。
-const BUILD = '20260616a';
+const BUILD = '20260616b';
 
 // 技能快捷列：6 格，各對應一個按鍵。玩家可從技能視窗拖曳技能到任一格自訂。
 const SKILL_BAR_KEYS = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH'];

@@ -97,7 +97,7 @@ check('怪物已生成', Game.monsters.length === 12);
 frames(30);
 check('背景 PNG 素材載入', __loadedImages.includes('assets/backgrounds/meadow-bg.png'));
 check('怪物 PNG 素材載入', __loadedImages.includes('assets/sprites/mob_blue_snail.png'));
-check('主角 PNG 素材載入', __loadedImages.includes('assets/sprites/player/hero-adventurer.png'));
+check('主角 PNG 素材載入', __loadedImages.includes('assets/sprites/player/hero-warrior.png'));
 Sprites.drawItemIcon(ctxStub_, 'woodSword', 0, 0, 32);
 check('道具圖示 PNG 載入', __loadedImages.includes('assets/ui/items/woodSword.png'));
 Sprites.drawItemIcon(ctxStub_, 'redPotion', 0, 0, 32);

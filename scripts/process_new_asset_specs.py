@@ -135,6 +135,8 @@ def process_walk(path):
     for r, job in enumerate(JOBS):
         frames = compose_frames(cells[r], (80, 96), align="bottom", fit=0.92, shared_scale=True)
         frames = [remove_tiny_components(frame, 42) for frame in frames]
+        # Player source art faces left; the renderer mirrors it when p.facing === 1.
+        frames = [frame.transpose(Image.Transpose.FLIP_LEFT_RIGHT) for frame in frames]
         out = ROOT / "assets/sprites/player" / f"hero-{job}-walk-sheet.png"
         save_strip(frames, out)
         written.append(str(out))
